@@ -14,6 +14,12 @@ const float point_length = POINT_LENGTH;
 const float bitset_chunk_length = POINT_LENGTH * BITSET_CHUNK_SIZE; // in metres
 
 
+class Intersection;
+class Path;
+class Grid;
+class Entity;
+
+
 enum class Exception;
 
 
@@ -21,6 +27,7 @@ struct Coordinates {
 	double x;
 	double y;
 
+	Coordinates() = default;
 	Coordinates(double x, double y) : x(x), y(y) {}
 };
 
@@ -40,6 +47,7 @@ enum class OccupyResult {
 /// </summary>
 class Path {
 public:
+	Path() = default;
 	/// <summary>
 	/// Creates a new path.
 	/// The path starts from the provided intersection.
@@ -49,7 +57,7 @@ public:
 	/// <param name="length">Length of the path (multiples of <see cref="point_length" />)</param>
 	/// <param name="number_of_lanes">Number of lanes (both ways) the path has.</param>
 	/// <param name="starting_intersection">Pointer to the starting intersection.</param>
-	Path(unsigned long id, std::string name, unsigned long length, unsigned int number_of_lanes, Intersection* starting_intersection);
+	Path(unsigned long id, std::string name, unsigned long length, unsigned int number_of_lanes, Intersection* starting_intersection, Intersection* ending_intersection);
 
 	/// <summary>
 	/// Tries to occupy the given point on the path.
@@ -78,7 +86,8 @@ private:
 	unsigned long m_id;
 	std::string m_name;
 	/// <summary>
-	/// Length of the path in multiples of <see cref="point_length" />.
+	/// Length of the path as a multiple of <see cref="point_length" />.
+	/// This is equal to the number of points on the path.
 	/// </summary>
 	unsigned long m_length;
 	/// <summary>
@@ -93,13 +102,13 @@ private:
 	/// </summary>
 	std::vector<std::bitset<BITSET_CHUNK_SIZE>> m_occupied_points;
 	/// <summary>
-	/// Pointers to all intersections on the path.
+	/// Pointer to starting intersection on the path.
 	/// </summary>
-	std::vector<Intersection*> m_intersections;
+	Intersection* m_first_intersection;
 	/// <summary>
-	/// Indices of the points in the path where the corresponding intersection exists.
+	/// Pointer to ending intersection on the path.
 	/// </summary>
-	std::vector<int> m_intersection_points;
+	Intersection* m_second_intersection;
 };
 
 /// <summary>
@@ -109,6 +118,7 @@ private:
 /// </summary>
 class Intersection {
 public:
+	Intersection() = default;
 	/// <summary>
 	/// Constructs an intersection with the given coordinates.
 	/// </summary>
@@ -142,9 +152,18 @@ public:
 	unsigned long add_intersection(std::string name, double x, double y);
 	/// <summary>
 	/// Generate and add a path to the grid.
+	/// Calculates length automaticatally based on distances between intersections.
 	/// </summary>
-	unsigned long add_path(std::string name, unsigned long length, unsigned int number_of_lanes, unsigned long starting_intersection_id);
+	unsigned long add_path(std::string name, unsigned int number_of_lanes, unsigned long starting_intersection_id, unsigned long ending_intersection_id);
+	/// <summary>
+	/// Generate and add a path to the grid.
+	/// </summary>
+	unsigned long add_path(std::string name, unsigned long length, unsigned int number_of_lanes, unsigned long starting_intersection_id, unsigned long ending_intersection_id);
+
+	Path* get_path(unsigned long id);
 private:
+	unsigned long distance_between_intersections(unsigned long id1, unsigned long id2);
+
 	std::map<unsigned long, Intersection> m_intersections;
 	std::map<unsigned long, Path> m_paths;
 	std::map<unsigned long, Coordinates> m_intersection_locations;
@@ -158,6 +177,7 @@ private:
 /// </summary>
 class Entity {
 public:
+	Entity() = default;
 	/// <summary>
 	/// Creates a new entity.
 	/// The constructor throws an error (OccupyResult) if the position is already occupied or out of bounds.
@@ -185,4 +205,4 @@ private:
 	/// Index of the point occupied on the current path.
 	/// </summary>
 	unsigned m_position;
-}
+};
