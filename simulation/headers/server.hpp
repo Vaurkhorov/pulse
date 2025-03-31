@@ -21,9 +21,11 @@ private:
 };
 
 
-class Server {
+class SimulationServer {
 public:
-	Server();
+	SimulationServer(asio::io_context& io, unsigned short port);
 private:
-
+	asio::ip::tcp::acceptor acceptor_;
+	void handle_client(std::shared_ptr<asio::ip::tcp::socket> socket);
+	void start_accept();
 };

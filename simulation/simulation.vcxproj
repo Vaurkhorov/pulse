@@ -132,7 +132,6 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="server\linux-server\src\call_cuda_code.cpp" />
-    <ClCompile Include="server\linux-server\src\server.cpp" />
     <ClCompile Include="server\windows-client\src\client.cpp" />
     <ClCompile Include="server\windows-client\src\serialization.cpp" />
     <ClCompile Include="src\glad.c" />
