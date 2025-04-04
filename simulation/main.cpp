@@ -588,11 +588,28 @@ void HandleMapInteraction(GLFWwindow* window) {
 }
 
 
+std::unique_ptr<Client_Server> clientServer;
 int main() {
+
+
+	bool isLoading = false;
+
+	// In your initialization function
+	try {
+		std::cout << "Initializing client server..." << std::endl;
+		clientServer = std::make_unique<Client_Server>("192.168.24.225", 12345);
+		std::cout << "Client server initialized successfully" << std::endl;
+	}
+	catch (const std::exception& e) {
+		std::cerr << "Failed to initialize client server: " << e.what() << std::endl;
+		clientServer = nullptr;
+	}
+
+
 	// initialize the client server
 	try
 	{
-		Client_Server clientServer("127.0.0.1", 12345);
+		std::cout << "Hellp" << std::endl;
 
 
 
@@ -673,6 +690,10 @@ int main() {
 
 		bool isLoading = false;
 
+		std::cout << "Hellp1" << std::endl;
+		//Client_Server clientServer("192.168.24.225", 12345);
+		std::cout << "Hellp" << std::endl;
+
 		// Main loop
 		while (!glfwWindowShouldClose(window)) {
 			// Calculate delta time
@@ -692,26 +713,41 @@ int main() {
 
 			// Printing a Button:
 
-			// Start ImGui window
-			ImGui::Begin("Demo Window");
+			
 
-			// Button with loading effect
+
+			// Show editor windows
+			ShowEditorWindow(&editorState.showDebugWindow);
+
+
+			// Start ImGui window
+			ImGui::Begin("Control Panel");
+
 			if (isLoading) {
 				ImGui::Text("Loading...");
 			}
-			else {
+			else if (clientServer) {
 				if (ImGui::Button("Click Me!")) {
 					std::string send = "Hello";
-					std::string res = clientServer.RunCUDAcode(send, isLoading);
-					std::cout << "Recieved from main function: " << res << std::endl;
+					try {
+						std::string res = clientServer->RunCUDAcode(send, isLoading);
+						std::cout << "Received: " << res << std::endl;
+					}
+					catch (const std::exception& e) {
+						std::cerr << "Network error: " << e.what() << std::endl;
+					}
 				}
+			}
+			else {
+				ImGui::Text("Networking unavailable");
+				/*if (ImGui::Button("Retry Connection")) {
+					initNetworking();
+				}*/
 			}
 
 			ImGui::End();
 
 
-			// Show editor windows
-			ShowEditorWindow(&editorState.showDebugWindow);
 
 			// Rendering
 			glClearColor(0.05f, 0.05f, 0.07f, 1.0f);
@@ -849,7 +885,7 @@ int main() {
 			glfwSwapBuffers(window);
 			glfwPollEvents();
 		}
-
+		clientServer = nullptr;
 
 
 		// Cleanup

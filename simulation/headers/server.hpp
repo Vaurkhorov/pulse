@@ -9,15 +9,17 @@ namespace Boostsystem = boost::system;
 
 class Client_Server {
 public:
-	Client_Server(const std::string &server_ip, unsigned short PORT);
-	std::string RunCUDAcode(std::string& sendData, bool& isLoading);
+    Client_Server(const std::string& server_ip, unsigned short PORT);
+    std::string RunCUDAcode(std::string& sendData, bool& isLoading);
 private:
-	void sendingData(bool& isLoading);
-	std::string RecievingData();
-	void connect();
-	asio::ip::tcp::socket socket;
-	asio::ip::tcp::endpoint endpoint;
-	asio::io_context context;
+    void sendingData(bool& isLoading);
+    std::string RecievingData();
+    void connect();
+
+    // Use a unique_ptr for io_context to ensure it's properly initialized before socket
+    std::unique_ptr<asio::io_context> context;
+    asio::ip::tcp::socket socket;
+    asio::ip::tcp::endpoint endpoint;
 };
 
 
