@@ -26,90 +26,37 @@
 #include "imgui_impl_opengl3.h"
 #include<glm/gtc/matrix_inverse.hpp>
 #include "../../headers/server.hpp"
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include "../../headers/editor.hpp"
+#include "../../headers/roadStructure.hpp"
+#include "../../headers/renderData.hpp"
+#include "../../headers/helpingFunctions.hpp"
+#include "../../headers/osm.hpp"
 
 void ShowEditorWindow(bool* p_open);
 void HandleMapInteraction(GLFWwindow* window);
 
-// Editor state structure
-struct EditorState {
-	enum Tool { NONE, ADD_ROAD, ADD_BUILDING, SELECT } currentTool = NONE;
-	std::string selectedRoadType = "residential";
-	std::vector<glm::vec3> currentWayPoints;
-	bool snapToGrid = true;
-	float gridSize = 5.0f;
-	bool showDebugWindow = true;
-	bool showRoadTypesWindow = true;
-};
-
 EditorState editorState;
-
-// Road data structures
-struct RoadSegment {
-	std::vector<glm::vec3> vertices;
-	std::string type;
-};
-
 
 // Global data containers
 std::vector<glm::vec3> groundPlaneVertices;
-std::map<std::string, std::vector<RoadSegment>> roadsByType;
+
 std::vector<std::vector<glm::vec3>> buildingFootprints;
 glm::mat4 projection;
 glm::mat4 view;
 
-// Rendering data
-struct RenderData {
-	GLuint VAO;
-	GLuint VBO;
-	size_t vertexCount;
-};
-
-std::map<std::string, RenderData> roadRenderData;
-std::vector<RenderData> buildingRenderData;
 RenderData groundRenderData;
+
 bool cursorEnabled = false;  // Track if cursor is visible/usable
 
 // Camera variables (reused from original code)
-glm::vec3 cameraPos = glm::vec3(0.0f, 50.0f, 50.0f);
+glm::vec3 cameraPos = glm::vec3(0.0f, 300.0f, 50.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.7f, -0.7f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-float cameraSpeed = 2.0f;
+float cameraSpeed = 3.0f;
 float yaw = -90.0f;
 float pitch = -45.0f;
 float lastX = 400, lastY = 300;
 bool firstMouse = true;
-
-// Function to convert WGS84 to Mercator (simplified)
-glm::vec2 latLonToMercator(double lat, double lon) {
-	const float R = 6378137.0f; // Earth radius in meters
-	float x = static_cast<float>(lon * M_PI * R / 180.0);
-	float y = static_cast<float>(log(tan((90.0 + lat) * M_PI / 360.0)) * R);
-	return glm::vec2(x, y);
-}
-
-// Road type categories for visualization
-const std::vector<std::string> roadHierarchy = {
-	"motorway", "trunk", "primary", "secondary", "tertiary",
-	"residential", "service", "unclassified", "other"
-};
-
-std::string categorizeRoadType(const char* highway_value) {
-	if (!highway_value) return "other";
-
-	std::string type = highway_value;
-
-	for (const auto& category : roadHierarchy) {
-		if (type.find(category) != std::string::npos) {
-			return category;
-		}
-	}
-
-	return "other";
-}
 
 void parseOSM(const std::string& filename) {
 	// Set up a location handler using an on-disk index for larger files
@@ -129,6 +76,8 @@ void parseOSM(const std::string& filename) {
 	for (const auto& category : roadHierarchy) {
 		roadsByType[category] = std::vector<RoadSegment>();
 	}
+
+	// --------------------------------
 
 	// First pass: Load all nodes into the index
 	osmium::io::Reader reader_first_pass{ input_file, osmium::osm_entity_bits::node };
