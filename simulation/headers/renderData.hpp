@@ -20,3 +20,4 @@ extern std::vector<RenderData> buildingRenderData;
 extern void setupRoadBuffers();
 extern void setupBuildingBuffers();
 extern void setupGroundBuffer();
+

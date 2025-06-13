@@ -1,6 +1,7 @@
 ﻿#include "../../headers/helpingFunctions.hpp"
 
 glm::vec2 latLonToMercator(double lat, double lon); 
+
 glm::vec2 latLonToMercator(double lat, double lon) {
 	const float R = 6378137.0f; // radius of Earth in Meters
 

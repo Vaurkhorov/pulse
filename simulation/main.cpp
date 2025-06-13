@@ -27,16 +27,6 @@
 #include<glm/gtc/matrix_inverse.hpp>
 
 
-void HandleMapInteraction(GLFWwindow* window);
-
-EditorState editorState;
-
-glm::mat4 projection;
-glm::mat4 view;
-
-
-bool cursorEnabled = false;  // Track if cursor is visible/usable
-
 // Camera variables (reused from original code)
 glm::vec3 cameraPos = glm::vec3(0.0f, 150.0f, 50.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.7f, -0.7f);
@@ -220,84 +210,6 @@ void processInput(GLFWwindow* window, float deltaTime) {
 		glfwSetWindowShouldClose(window, true);
 
 
-}
-
-// ImGui setup
-void InitializeImGui(GLFWwindow* window) {
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-	ImGui::StyleColorsDark();
-
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 330");
-}
-
-void ShutdownImGui() {
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-}
-
-void ShowEditorWindow(bool* p_open) {
-	ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
-	if (!ImGui::Begin("Map Editor", p_open)) {
-		ImGui::End();
-		return;
-	}
-
-	ImGui::Text("Press TAB to toggle cursor mode");
-	ImGui::Text("Current mode: %s", cursorEnabled ? "UI Editing" : "Camera Control");
-
-	// Tool selection
-	ImGui::Text("Tools:");
-	ImGui::RadioButton("Select", (int*)&editorState.currentTool, EditorState::SELECT);
-	ImGui::RadioButton("Add Road", (int*)&editorState.currentTool, EditorState::ADD_ROAD);
-	ImGui::RadioButton("Add Building", (int*)&editorState.currentTool, EditorState::ADD_BUILDING);
-
-	// Road type selection
-	if (editorState.currentTool == EditorState::ADD_ROAD) {
-		ImGui::Separator();
-		ImGui::Text("Road Type:");
-		for (const auto& type : roadHierarchy) {
-			if (ImGui::RadioButton(type.c_str(), editorState.selectedRoadType == type)) {
-				editorState.selectedRoadType = type;
-			}
-		}
-	}
-
-	// Grid settings
-	ImGui::Separator();
-	ImGui::Checkbox("Snap to Grid", &editorState.snapToGrid);
-	if (editorState.snapToGrid) {
-		ImGui::SliderFloat("Grid Size", &editorState.gridSize, 1.0f, 20.0f);
-	}
-
-	// Current way points
-	if (!editorState.currentWayPoints.empty()) {
-		ImGui::Separator();
-		ImGui::Text("Current Way Points:");
-		for (size_t i = 0; i < editorState.currentWayPoints.size(); ++i) {
-			ImGui::Text("Point %d: (%.1f, %.1f)",
-				(int)i + 1,
-				editorState.currentWayPoints[i].x,
-				editorState.currentWayPoints[i].z);
-		}
-
-		if (ImGui::Button("Finish Way")) {
-			if (editorState.currentTool == EditorState::ADD_ROAD) {
-				RoadSegment newRoad;
-				newRoad.vertices = editorState.currentWayPoints;
-				newRoad.type = editorState.selectedRoadType;
-				roadsByType[editorState.selectedRoadType].push_back(newRoad);
-				setupRoadBuffers();
-			}
-			editorState.currentWayPoints.clear();
-		}
-	}
-
-	ImGui::End();
 }
 
 void HandleMapInteraction(GLFWwindow* window) {
