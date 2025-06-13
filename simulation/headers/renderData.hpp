@@ -1,6 +1,9 @@
 #pragma once
-#include<GL/GL.h>
+#include <glad/glad.h>
 #include<map>
+#include<iostream>
+#include<vector>
+#include"roadStructure.hpp"
 
 // Rendering data
 
@@ -10,5 +13,10 @@ struct RenderData {
 	size_t vertexCount;
 };
 
-std::map<std::string, RenderData> roadRenderData;
-std::vector<RenderData> buildingRenderData;
+extern RenderData groundRenderData;
+
+extern std::map<std::string, RenderData> roadRenderData;
+extern std::vector<RenderData> buildingRenderData;
+extern void setupRoadBuffers();
+extern void setupBuildingBuffers();
+extern void setupGroundBuffer();

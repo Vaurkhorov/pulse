@@ -1,12 +1,15 @@
 //// I've added random include and linkers, remove them
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#define _CRT_NONSTDC_NO_DEPRECATE
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_DEPRECATE
+//#define _CRT_SECURE_NO_WARNINGS
+//#define _CRT_SECURE_NO_DEPRECATE
+#include "../../headers/server.hpp"
+#include "../../headers/editor.hpp"
+#include "../../headers/roadStructure.hpp"
+#include "../../headers/osm.hpp"
+#include "../../headers/renderData.hpp"
+#include "../../headers/helpingFunctions.hpp"
+#include "../../headers/imgui.hpp"
 
-#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -21,225 +24,28 @@
 #include <osmium/handler/node_locations_for_ways.hpp>
 #include <osmium/index/map/flex_mem.hpp>
 #include <map>
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
 #include<glm/gtc/matrix_inverse.hpp>
-#include "../../headers/server.hpp"
-#include "../../headers/editor.hpp"
-#include "../../headers/roadStructure.hpp"
-#include "../../headers/renderData.hpp"
-#include "../../headers/helpingFunctions.hpp"
-#include "../../headers/osm.hpp"
 
-void ShowEditorWindow(bool* p_open);
+
 void HandleMapInteraction(GLFWwindow* window);
 
 EditorState editorState;
 
-// Global data containers
-std::vector<glm::vec3> groundPlaneVertices;
-
-std::vector<std::vector<glm::vec3>> buildingFootprints;
 glm::mat4 projection;
 glm::mat4 view;
 
-RenderData groundRenderData;
 
 bool cursorEnabled = false;  // Track if cursor is visible/usable
 
 // Camera variables (reused from original code)
-glm::vec3 cameraPos = glm::vec3(0.0f, 300.0f, 50.0f);
+glm::vec3 cameraPos = glm::vec3(0.0f, 150.0f, 50.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, -0.7f, -0.7f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-float cameraSpeed = 3.0f;
+float cameraSpeed = 200.0f;
 float yaw = -90.0f;
 float pitch = -45.0f;
 float lastX = 400, lastY = 300;
 bool firstMouse = true;
-
-void parseOSM(const std::string& filename) {
-	// Set up a location handler using an on-disk index for larger files
-	osmium::io::File input_file{ filename };
-	osmium::io::Reader reader{ input_file, osmium::osm_entity_bits::node | osmium::osm_entity_bits::way };
-
-	// Use index for nodes
-	osmium::index::map::FlexMem<osmium::unsigned_object_id_type, osmium::Location> index;
-	osmium::handler::NodeLocationsForWays<decltype(index)> location_handler{ index };
-
-	// Reference point (adjust to your OSM data's center)
-	double ref_lat = 30.732076; // Chandigarh coordinates
-	double ref_lon = 76.772863;
-	glm::vec2 ref_point = latLonToMercator(ref_lat, ref_lon);
-
-	// Initialize road categories
-	for (const auto& category : roadHierarchy) {
-		roadsByType[category] = std::vector<RoadSegment>();
-	}
-
-	// --------------------------------
-
-	// First pass: Load all nodes into the index
-	osmium::io::Reader reader_first_pass{ input_file, osmium::osm_entity_bits::node };
-	osmium::apply(reader_first_pass, location_handler);
-	reader_first_pass.close();
-
-	// Track min/max coordinates for ground plane
-	float min_x = std::numeric_limits<float>::max();
-	float max_x = std::numeric_limits<float>::lowest();
-	float min_z = std::numeric_limits<float>::max();
-	float max_z = std::numeric_limits<float>::lowest();
-
-	// Second pass: Process ways
-	osmium::io::Reader reader_second_pass{ input_file, osmium::osm_entity_bits::way };
-
-	try {
-		while (osmium::memory::Buffer buffer = reader_second_pass.read()) {
-			for (const auto& entity : buffer) {
-				if (entity.type() == osmium::item_type::way) {
-					const osmium::Way& way = static_cast<const osmium::Way&>(entity);
-					const char* highway_value = way.tags().get_value_by_key("highway");
-					bool is_building = way.tags().get_value_by_key("building") != nullptr;
-
-					std::vector<glm::vec3> way_vertices;
-					for (const auto& node_ref : way.nodes()) {
-						try {
-							osmium::Location loc = location_handler.get_node_location(node_ref.ref());
-							if (!loc.valid()) continue;
-
-							double lat = loc.lat();
-							double lon = loc.lon();
-							glm::vec2 mercator = latLonToMercator(lat, lon);
-
-							float scale_factor = 0.001f;
-							float x = (mercator.x - ref_point.x) * scale_factor;
-							float z = (mercator.y - ref_point.y) * scale_factor;
-
-							// Track min/max for ground plane
-							min_x = std::min(min_x, x);
-							max_x = std::max(max_x, x);
-							min_z = std::min(min_z, z);
-							max_z = std::max(max_z, z);
-
-							// Default height is 0
-							float y = 0.0f;
-
-							way_vertices.emplace_back(x, y, z);
-						}
-						catch (const osmium::invalid_location&) {
-							// Skip invalid locations
-						}
-					}
-
-					if (way_vertices.empty()) continue;
-
-					if (highway_value) {
-						// Categorize road by type
-						std::string category = categorizeRoadType(highway_value);
-
-						RoadSegment segment;
-						segment.vertices = way_vertices;
-						segment.type = highway_value;
-
-						roadsByType[category].push_back(segment);
-					}
-					else if (is_building && way_vertices.size() >= 3) {
-						// Close the building footprint if it's not closed
-						if (way_vertices.front() != way_vertices.back()) {
-							way_vertices.push_back(way_vertices.front());
-						}
-						buildingFootprints.push_back(way_vertices);
-					}
-				}
-			}
-		}
-
-		// Create ground plane vertices
-		float padding = 50.0f; // Add some extra space around the map
-		groundPlaneVertices = {
-			{min_x - padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, max_z + padding},
-			{min_x - padding, -0.1f, max_z + padding}
-		};
-
-		// Print statistics
-		int total_roads = 0;
-		for (const auto& road : roadsByType) {
-			const auto& type = road.first;
-			const auto& segments = road.second;
-			total_roads += segments.size();
-		}
-
-		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
-		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
-	}
-	catch (const std::exception& e) {
-		std::cerr << "Error while parsing OSM: " << e.what() << std::endl;
-	}
-
-	reader_second_pass.close();
-}
-
-void setupRoadBuffers() {
-	for (const auto& road : roadsByType) {
-		const auto& type = road.first;
-		const auto& segments = road.second;
-		if (segments.empty()) continue;
-
-		// Flatten all segments of this type into one buffer
-		std::vector<glm::vec3> allVertices;
-		for (const auto& segment : segments) {
-			for (size_t i = 0; i < segment.vertices.size() - 1; ++i) {
-				allVertices.push_back(segment.vertices[i]);
-				allVertices.push_back(segment.vertices[i + 1]);
-			}
-		}
-
-		if (allVertices.empty()) continue;
-
-		RenderData data;
-		glGenVertexArrays(1, &data.VAO);
-		glGenBuffers(1, &data.VBO);
-		glBindVertexArray(data.VAO);
-		glBindBuffer(GL_ARRAY_BUFFER, data.VBO);
-		glBufferData(GL_ARRAY_BUFFER, allVertices.size() * sizeof(glm::vec3), allVertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-		glEnableVertexAttribArray(0);
-		data.vertexCount = allVertices.size();
-
-		roadRenderData[type] = data;
-	}
-}
-
-void setupBuildingBuffers() {
-	for (const auto& footprint : buildingFootprints) {
-		if (footprint.size() < 3) continue;
-
-		RenderData data;
-		glGenVertexArrays(1, &data.VAO);
-		glGenBuffers(1, &data.VBO);
-		glBindVertexArray(data.VAO);
-		glBindBuffer(GL_ARRAY_BUFFER, data.VBO);
-		glBufferData(GL_ARRAY_BUFFER, footprint.size() * sizeof(glm::vec3), footprint.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-		glEnableVertexAttribArray(0);
-		data.vertexCount = footprint.size();
-
-		buildingRenderData.push_back(data);
-	}
-}
-
-void setupGroundBuffer() {
-	glGenVertexArrays(1, &groundRenderData.VAO);
-	glGenBuffers(1, &groundRenderData.VBO);
-	glBindVertexArray(groundRenderData.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, groundRenderData.VBO);
-	glBufferData(GL_ARRAY_BUFFER, groundPlaneVertices.size() * sizeof(glm::vec3), groundPlaneVertices.data(), GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-	glEnableVertexAttribArray(0);
-	groundRenderData.vertexCount = groundPlaneVertices.size();
-}
 
 // Reuse the input handling and camera functions from the original code
 // (framebuffer_size_callback, mouse_callback, scroll_callback, processInput)

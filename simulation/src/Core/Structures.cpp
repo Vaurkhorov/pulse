@@ -1,5 +1,8 @@
 #include"../../headers/roadStructure.hpp"
 
+void setupRoadBuffers();
+void setupBuildingBuffers();
+
 std::string categorizeRoadType(const char* highway_value) {
 	if (!highway_value) return "other";
 
@@ -14,3 +17,6 @@ std::string categorizeRoadType(const char* highway_value) {
 	// if no already defined road types found => return others
 	return "other";
 }
+
+
+

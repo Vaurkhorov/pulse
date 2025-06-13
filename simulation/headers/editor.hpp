@@ -1,5 +1,6 @@
 #pragma once
 #include<string>
+#include<glm/glm.hpp>
 #include<vector>
 
 // Editor state structure

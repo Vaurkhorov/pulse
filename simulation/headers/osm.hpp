@@ -1,4 +1,11 @@
 #pragma once
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define _CRT_NONSTDC_NO_DEPRECATE
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_DEPRECATE
+
+#include <osmium/io/detail/read_write.hpp>
 #include <osmium/handler/node_locations_for_ways.hpp>
 #include <osmium/index/map/flex_mem.hpp>
 #include <string>
