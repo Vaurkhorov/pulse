@@ -48,24 +48,54 @@ void Input::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) 
 	data->camera->ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
-void Input::keyboardInput(GLFWwindow* window, Camera& cam, float &deltaTime) {
+void Input::keyboardInput(GLFWwindow* window, Camera& cam, float& deltaTime) {
+	static bool tabPressed = false;
+	static bool cursorEnabled = true;
+	if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS) {
+		if (!tabPressed) {
+			cursorEnabled = !cursorEnabled;
+			if (cursorEnabled) {
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			}
+			else {
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			}
+		}
+		tabPressed = true;
+	}
+	else {
+		tabPressed = false;
+	}
+
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 		glfwSetWindowShouldClose(window, true);
 	}
 
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-		cam.ProcessKeyboard(FORWARD, deltaTime);
-	}
+	if (!cursorEnabled) {
+		
 
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-		cam.ProcessKeyboard(BACKWARD, deltaTime);
-	}
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+			cam.ProcessKeyboard(FORWARD, deltaTime);
+		}
 
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-		cam.ProcessKeyboard(LEFT, deltaTime);
-	}
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+			cam.ProcessKeyboard(BACKWARD, deltaTime);
+		}
 
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-		cam.ProcessKeyboard(RIGHT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+			cam.ProcessKeyboard(LEFT, deltaTime);
+		}
+
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+			cam.ProcessKeyboard(RIGHT, deltaTime);
+		}
+
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){ 
+			cam.ProcessKeyboard(UP, deltaTime);
+		}
+
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS){
+			cam.ProcessKeyboard(DOWN, deltaTime);
+		}
 	}
 }

@@ -7,7 +7,7 @@ void InitializeImGui(GLFWwindow* window);
 void ShutdownImGui();
 void ShowEditorWindow(bool* p_open);
 bool cursorEnabled = false;
-void HandleMapInteraction(GLFWwindow* window);
+void HandleMapInteraction(Camera& cam, GLFWwindow* window);
 
 
 void InitializeImGui(GLFWwindow* window) {
@@ -103,35 +103,50 @@ void ShowEditorWindow(bool* p_open) {
 		ImGui::End();
 }
 
-// Handles the way points using the ray and ground intersection points
-//void HandleMapInteraction(GLFWwindow* window) {
-//	if (ImGui::GetIO().WantCaptureMouse) return;
-//
-//	// Getting mouse position in screen coordinates
-//	double xpos, ypos;
-//	glfwGetCursorPos(window, &xpos, &ypos);
-//
-//	// getting viewPort size
-//	int width, height;
-//	glfwGetWindowSize(window, &width, &height);
-//
-//	// converting to normalized device coordinates
-//	float x = (2.0f * xpos) / width - 1.0f; // TODO: How is this calculation performed here?
-//	float y = 1.0f - (2.0f * ypos) / height;
-//
-//
-//	// TODO: See the mathematics how this is done
-//	// creating a ray in View space
-//	glm::vec4 rayClip(x, y, -1.0f, 1.0f);
-//	glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-//	rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-//	glm::vec3 rayWorld = glm::vec3(glm::inverse(view) * rayEye);
-//	rayWorld = glm::normalize(rayWorld);
-//
-//
-//	// TODO: isn't the ground plane at y=-1?
-//	// Calculating intersection with ground plane y=0
-//	
-//
-//	
-//}
+ //Handles the way points using the ray and ground intersection points
+void HandleMapInteraction(Camera& cam, GLFWwindow* window) {
+	if (ImGui::GetIO().WantCaptureMouse) return;
+
+	// Getting mouse position in screen coordinates
+	double xpos, ypos;
+	glfwGetCursorPos(window, &xpos, &ypos);
+
+	// getting viewPort size
+	int width, height;
+	glfwGetWindowSize(window, &width, &height);
+
+	// converting to normalized device coordinates
+	float x = (2.0f * xpos) / width - 1.0f; // TODO: How is this calculation performed here?
+	float y = 1.0f - (2.0f * ypos) / height;
+
+
+	// TODO: See the mathematics how this is done
+	// creating a ray in View space
+	glm::vec4 rayClip(x, y, -1.0f, 1.0f);
+	glm::vec4 rayEye = glm::inverse(projection) * rayClip;
+	rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+	glm::vec3 rayWorld = glm::vec3(glm::inverse(view) * rayEye);
+	rayWorld = glm::normalize(rayWorld);
+
+
+	// TODO: isn't the ground plane at y=-1?
+	// Calculating intersection with ground plane y=0
+	float t = -cam.Position.y / rayWorld.y;
+	glm::vec3 intersection = cam.Position + (t * rayWorld);
+
+	// TODO: wtf is done here?
+	if (editorState.snapToGrid) {
+		intersection.x = round(intersection.x / editorState.gridSize) * editorState.gridSize;
+		intersection.z = round(intersection.z / editorState.gridSize) * editorState.gridSize;
+	}
+
+	//Handle mouse clicks
+	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+		if (editorState.currentTool == EditorState::ADD_ROAD ||
+			editorState.currentTool == EditorState::ADD_BUILDING) {
+			// Add new point
+			editorState.currentWayPoints.push_back(intersection); // TODO: I don't think this is working!
+		}
+	}
+
+}

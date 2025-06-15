@@ -131,11 +131,15 @@ int main() {
 
     Shader ourShader("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.vert",
         "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.frag");
+    
     // load map
     parseOSM("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\src\\map.osm");
     setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
+
+    // Initializing Imgui
+    InitializeImGui(window);
 
     // main loop
     while (!glfwWindowShouldClose(window)) {
@@ -145,11 +149,13 @@ int main() {
 
         Input::keyboardInput(window, camera, deltaTime);
 
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ourShader.use();
         ourShader.setMat4("model", glm::mat4(1.0f));
-        glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), float(SCR_WIDTH) / SCR_HEIGHT, 0.1f, 8000.f);
+        // THe 8000 is the length/plane that will be rendered from my camera.
+        glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), float(SCR_WIDTH) / SCR_HEIGHT, 0.1f, 8000.f); // TODO: I've hardcoded 8000 for now, but we need to do calculations to make this thing dynamic so that later when new map is loaded, so that it adjusts automatically.
         ourShader.setMat4("projection", proj);
         ourShader.setMat4("view", camera.GetViewMatrix());
 
@@ -157,33 +163,49 @@ int main() {
         drawRoads(ourShader, roadColors);
         drawBuildings(ourShader);
 
+        // Handle map interaction
+        //ShowEditorWindow(&editorState.showDebugWindow);
+        //HandleMapInteraction(camera, window);
 
+        // For Server button
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
-        /*imgui.beginFrame();
         ImGui::Begin("Control Panel");
-        if (isLoading) ImGui::Text("Loading...");
+
+        if (isLoading) {
+            ImGui::Text("Loading...");
+        }
         else if (clientServer) {
-            if (ImGui::Button("Send Hello")) {
+            if (ImGui::Button("Click Me!")) {
+                std::string send = "Hello";
                 try {
-                    isLoading = true;
-                    std::string abc = "Hello";
-                    std::string res = clientServer->RunCUDAcode(abc,isLoading);
+                    std::string res = clientServer->RunCUDAcode(send, isLoading);
                     std::cout << "Received: " << res << std::endl;
                 }
-                catch (std::exception& e) {
+                catch (const std::exception& e) {
                     std::cerr << "Network error: " << e.what() << std::endl;
                 }
-                isLoading = false;
             }
         }
-        else ImGui::Text("Networking unavailable");
+        else {
+            ImGui::Text("Networking unavailable");
+            /*if (ImGui::Button("Retry Connection")) {More actions
+                initNetworking();
+            }*/
+        }
         ImGui::End();
-        imgui.endFrame();*/
+        glDisable(GL_DEPTH_TEST);   // Important to disable for ImGui overlays
+        ImGui::Render(); // render call is neccessary
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        //glEnable(GL_DEPTH_TEST); // causing problem in rendering
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    //ShutdownImGui();
     glfwTerminate();
     return 0;
 }
