@@ -4,6 +4,7 @@
 #include<iostream>
 #include<vector>
 #include"roadStructure.hpp"
+#include"shaders.hpp"
 
 // Rendering data
 
@@ -20,4 +21,6 @@ extern std::vector<RenderData> buildingRenderData;
 extern void setupRoadBuffers();
 extern void setupBuildingBuffers();
 extern void setupGroundBuffer();
-
+extern void drawGround(Shader& shader);
+extern void drawRoads(Shader& shader, const std::map<std::string, glm::vec3>& roadColors);
+extern void drawBuildings(Shader& shader);

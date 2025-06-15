@@ -98,6 +98,8 @@ void parseOSM(const std::string& filename) {
 						}
 					}
 
+					//std::cout << way_vertices[0].x << " " << way_vertices[0].y << " " << way_vertices[0].z << std::endl;
+
 					if (way_vertices.empty()) continue; // if no way verteces then continue
 
 					if (highway_value) {
@@ -139,9 +141,11 @@ void parseOSM(const std::string& filename) {
 			total_roads += segments.size();
 		}
 
+		std::cout << "heloo" << std::endl;
+
 		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
 		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
-
+		
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error while Parsing OSM:: " << e.what() << std::endl;

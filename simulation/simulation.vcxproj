@@ -137,12 +137,13 @@
     <ClCompile Include="server\windows-client\src\serialization.cpp" />
     <ClCompile Include="src\Core\HelpingFunctions.cpp" />
     <ClCompile Include="src\Core\imgui.cpp" />
-    <ClCompile Include="src\Core\MapEditor\Editor.cpp" />
     <ClCompile Include="src\Core\osm.cpp" />
     <ClCompile Include="src\Core\Render.cpp" />
     <ClCompile Include="src\Core\Structures.cpp" />
     <ClCompile Include="src\glad.c" />
     <ClCompile Include="src\types.cpp" />
+    <ClCompile Include="src\utils\Extras.cpp" />
+    <ClCompile Include="src\utils\Input.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="headers\camera.hpp" />
@@ -166,6 +167,16 @@
     <ClInclude Include="server\commonFile.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="assets\shaders\camera_shader.frag" />
+    <None Include="assets\shaders\camera_shader.vert" />
+    <None Include="assets\shaders\f_shader.frag" />
+    <None Include="assets\shaders\Ground.frag" />
+    <None Include="assets\shaders\Ground.vert" />
+    <None Include="assets\shaders\main.frag" />
+    <None Include="assets\shaders\main.vert" />
+    <None Include="assets\shaders\model.frag" />
+    <None Include="assets\shaders\model.vert" />
+    <None Include="assets\shaders\v_shader.vert" />
     <None Include="src\map.osm" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

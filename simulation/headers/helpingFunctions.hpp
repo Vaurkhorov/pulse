@@ -24,4 +24,8 @@
 	 * 3. This produces a conformal Mercator projection where angles are preserved,
 	 *    making it ideal for map tiling and navigation.
 	 */
-	extern glm::vec2 latLonToMercator(double lat, double lon);
+	glm::vec2 latLonToMercator(double lat, double lon);
+
+
+	extern // Utility function to generate random building heights
+		float getRandomBuildingHeight();

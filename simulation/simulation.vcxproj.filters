@@ -33,9 +33,6 @@
     <ClCompile Include="server\windows-client\src\serialization.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\Core\MapEditor\Editor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="headers\helpingFunctions.hpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -52,6 +49,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Core\imgui.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\Input.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\Extras.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -116,5 +119,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="src\map.osm" />
+    <None Include="assets\shaders\camera_shader.frag" />
+    <None Include="assets\shaders\camera_shader.vert" />
+    <None Include="assets\shaders\f_shader.frag" />
+    <None Include="assets\shaders\Ground.frag" />
+    <None Include="assets\shaders\Ground.vert" />
+    <None Include="assets\shaders\main.frag" />
+    <None Include="assets\shaders\main.vert" />
+    <None Include="assets\shaders\model.frag" />
+    <None Include="assets\shaders\model.vert" />
+    <None Include="assets\shaders\v_shader.vert" />
   </ItemGroup>
 </Project>
