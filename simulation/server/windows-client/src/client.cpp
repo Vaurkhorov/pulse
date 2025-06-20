@@ -1,4 +1,4 @@
-#include "../../headers/server.hpp"
+#include "../../headers/ServerHeaders/server.hpp"
 #include <memory>
 #include <string>
 #include <iostream>
@@ -36,7 +36,7 @@ Client_Server::Client_Server(const std::string& server_ip, unsigned short PORT)
     }
 }
 
-std::string Client_Server::RunCUDAcode(std::string& sendData, bool& isLoading) {
+std::string Client_Server::RunCUDAcode (std::string& sendData, bool& isLoading) {
     try {
         connect();
         sendingData(isLoading);

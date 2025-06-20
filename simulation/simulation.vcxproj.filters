@@ -98,7 +98,7 @@
     <ClInclude Include="headers\roadStructure.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="headers\server.hpp">
+    <ClInclude Include="headers\ServerHeaders\server.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="headers\shaders.hpp">

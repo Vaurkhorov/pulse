@@ -1,5 +1,5 @@
 ﻿
-#include "../../headers/server.hpp"
+#include "../../headers/ServerHeaders/server.hpp"
 #include "../../headers/editor.hpp"
 #include "../../headers/roadStructure.hpp"
 #include "../../headers/osm.hpp"
@@ -16,50 +16,50 @@
 #include <cmath> 
 #include<glm/gtc/matrix_inverse.hpp>
 
-
+// The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
 float minZ = -2500.0f, maxZ = 3500.0f;
 
+// The approax center of my map
 glm::vec3 sceneCenter(
-    (minX + maxX) * 0.5f,    // ≈ (-3400 + 2300)/2 = -550
+    (minX + maxX) * 0.5f,    
     0.0f,
-    (minZ + maxZ) * 0.5f     // ≈ (-2500 + 3500)/2 =  500
+    (minZ + maxZ) * 0.5f    
 );
 
+// TODO: Change the "z" value for contoling the init position of the camera's zooml
+// The offset value I am moving my camera to
 glm::vec3 camOffset(0.0f, 400.0f, 500.0f);
 
 // compute final position:
 glm::vec3 camPos = sceneCenter + camOffset;
-// ≈ (-550, 400, 2500)
 
 glm::vec3 target = sceneCenter;  // what we look at
 
 // derive direction, yaw, pitch
 glm::vec3 dir = glm::normalize(target - camPos);
-float yaw = glm::degrees(atan2(dir.z, dir.x));  // should be ≈ -90°
-float pitch = glm::degrees(asin(dir.y));          // ≈ -10°
+float yaw = glm::degrees(atan2(dir.z, dir.x));  // should be ~ -90°
+float pitch = glm::degrees(asin(dir.y));          // ~ -10°
 
 Camera camera(
-    camPos,                   // (~-550, 400, 2500)
+    camPos,
     glm::vec3(0, 1, 0),
     yaw,                      // ~-90°
     pitch                     // ~-10°
 );
 
-
-
 // settings
-static constexpr unsigned int SCR_WIDTH = 800; // TODO: wtf is constexpr
+static constexpr unsigned int SCR_WIDTH = 800; // constexpr fixes the value at compile time unlike const's runtime fixing
 static constexpr unsigned int SCR_HEIGHT = 600;
 
 float deltaTime = 0.0f, lastFrame = 0.0f;
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+void static framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
 int main() {
-    // debug memory leaks
+    // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
     // init GLFW
@@ -77,7 +77,7 @@ int main() {
         glfwTerminate();
         return -1;
     }
-    glfwMakeContextCurrent(window);
+    glfwMakeContextCurrent(window); // ------  Do any work after this context --------
 
     // input
     Input::WindowData data{}; // instance of WindowData struct of the input class
@@ -98,19 +98,11 @@ int main() {
         return -1;
     }
 
-    // GL state
-    //glEnable(GL_DEPTH_TEST);
-    //glEnable(GL_CULL_FACE);
-    //glCullFace(GL_BACK);
-
-    // imgui
-    //ImGuiLayer imgui(window);
-
     // client-server
     std::unique_ptr<Client_Server> clientServer;
     bool isLoading = false;
     try {
-        clientServer = std::make_unique<Client_Server>("192.168.24.225", 12345);
+        clientServer = std::make_unique<Client_Server>("192.168.31.195", 12345); // TODO: change the IP, before running the program, to the server's ip
     }
     catch (std::exception& e) {
         std::cerr << "ClientServer init failed: " << e.what() << std::endl;
@@ -149,7 +141,6 @@ int main() {
 
         Input::keyboardInput(window, camera, deltaTime);
 
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ourShader.use();
@@ -163,8 +154,9 @@ int main() {
         drawRoads(ourShader, roadColors);
         drawBuildings(ourShader);
 
-        // Handle map interaction
-        //ShowEditorWindow(&editorState.showDebugWindow);
+        // Currnelty the below functions are giving runtime errors(mostly null pointer error)
+        // Handle map interaction 
+        //ShowEditorWindow(&editorState.showDebugWindow); 
         //HandleMapInteraction(camera, window);
 
         // For Server button
@@ -181,6 +173,8 @@ int main() {
             if (ImGui::Button("Click Me!")) {
                 std::string send = "Hello";
                 try {
+                    // TODO: Add a loading bar!!!
+                    // This call is blocking and hangs the application. so better have a loading spiner prerender to call at this point.
                     std::string res = clientServer->RunCUDAcode(send, isLoading);
                     std::cout << "Received: " << res << std::endl;
                 }
@@ -191,7 +185,8 @@ int main() {
         }
         else {
             ImGui::Text("Networking unavailable");
-            /*if (ImGui::Button("Retry Connection")) {More actions
+            // TODO: Implement this functionality this later
+            /*if (ImGui::Button("Retry Connection")) {
                 initNetworking();
             }*/
         }
@@ -205,7 +200,7 @@ int main() {
         glfwPollEvents();
     }
 
-    //ShutdownImGui();
+    ShutdownImGui();
     glfwTerminate();
     return 0;
 }
