@@ -1,14 +1,14 @@
 ﻿
 #include "../../headers/ServerHeaders/server.hpp"
-#include "../../headers/editor.hpp"
-#include "../../headers/roadStructure.hpp"
-#include "../../headers/osm.hpp"
-#include "../../headers/renderData.hpp"
-#include "../../headers/helpingFunctions.hpp"
-#include "../../headers/imgui.hpp"
-#include "../../headers/Inputs.hpp"
-#include "../../headers/camera.hpp"
-#include "../../headers/shaders.hpp"
+#include "../../headers/Visualisation_Headers/editor.hpp"
+#include "../../headers/Visualisation_Headers/roadStructure.hpp"
+#include "../../headers/Visualisation_Headers/osm.hpp"
+#include "../../headers/Visualisation_Headers/renderData.hpp"
+#include "../../headers/Visualisation_Headers/helpingFunctions.hpp"
+#include "../../headers/Visualisation_Headers/imgui.hpp"
+#include "../../headers/Visualisation_Headers/Inputs.hpp"
+#include "../../headers/Visualisation_Headers/camera.hpp"
+#include "../../headers/Visualisation_Headers/shaders.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>

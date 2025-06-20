@@ -130,40 +130,40 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="headers\helpingFunctions.hpp" />
+    <ClCompile Include="headers\Visualisation_Headers\helpingFunctions.hpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="server\linux-server\src\call_cuda_code.cpp" />
     <ClCompile Include="server\windows-client\src\client.cpp" />
     <ClCompile Include="server\windows-client\src\serialization.cpp" />
-    <ClCompile Include="src\Core\HelpingFunctions.cpp" />
-    <ClCompile Include="src\Core\imgui.cpp" />
-    <ClCompile Include="src\Core\osm.cpp" />
-    <ClCompile Include="src\Core\Render.cpp" />
-    <ClCompile Include="src\Core\Structures.cpp" />
+    <ClCompile Include="src\Visualization_Core\HelphinFunctions.cpp" />
     <ClCompile Include="src\glad.c" />
     <ClCompile Include="src\types.cpp" />
     <ClCompile Include="src\utils\Extras.cpp" />
     <ClCompile Include="src\utils\Input.cpp" />
+    <ClCompile Include="src\Visualization_Core\imgui.cpp" />
+    <ClCompile Include="src\Visualization_Core\osm.cpp" />
+    <ClCompile Include="src\Visualization_Core\Render.cpp" />
+    <ClCompile Include="src\Visualization_Core\Structures.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="headers\camera.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\camera.hpp" />
     <ClInclude Include="headers\CUDA_LinuxHeader.hpp" />
-    <ClInclude Include="headers\editor.hpp" />
-    <ClInclude Include="headers\Ground.hpp" />
-    <ClInclude Include="headers\imgui.hpp" />
-    <ClInclude Include="headers\Inputs.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\editor.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\Ground.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\imgui.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\Inputs.hpp" />
     <ClInclude Include="headers\libs.hpp" />
-    <ClInclude Include="headers\mesh.hpp" />
-    <ClInclude Include="headers\model.hpp" />
-    <ClInclude Include="headers\Movements.hpp" />
-    <ClInclude Include="headers\osm.hpp" />
-    <ClInclude Include="headers\renderData.hpp" />
-    <ClInclude Include="headers\roadStructure.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\mesh.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\model.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\Movements.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\osm.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\renderData.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\roadStructure.hpp" />
     <ClInclude Include="headers\ServerHeaders\server.hpp" />
-    <ClInclude Include="headers\shaders.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\shaders.hpp" />
     <ClInclude Include="headers\stb_image.h" />
-    <ClInclude Include="headers\Texture.hpp" />
-    <ClInclude Include="include\types.hpp" />
+    <ClInclude Include="headers\Visualisation_Headers\Texture.hpp" />
+    <ClInclude Include="headers\types.hpp" />
     <ClInclude Include="server\commonFile.hpp" />
   </ItemGroup>
   <ItemGroup>

@@ -1,4 +1,4 @@
-#include "../../headers/imgui.hpp"
+#include "../../headers/Visualisation_Headers/imgui.hpp"
 
 glm::mat4 projection;
 glm::mat4 view;
@@ -64,46 +64,46 @@ void ShowEditorWindow(bool* p_open) {
 		}
 	}
 
-		// Grid setting: Snap to Grid
+	// Grid setting: Snap to Grid
+	ImGui::Separator();
+	ImGui::Checkbox("Snap to Grid", &editorState.snapToGrid);
+
+	if (editorState.snapToGrid) {
+		ImGui::SliderFloat("Grid Size", &editorState.gridSize, 1.0f, 20.0f); // TODO: Add snap to grid functionality here
+	}
+
+	// Current Way Points selected
+
+	if (!editorState.currentWayPoints.empty()) {
 		ImGui::Separator();
-		ImGui::Checkbox("Snap to Grid", &editorState.snapToGrid);
+		ImGui::Text("Current Way Points:");
 
-		if (editorState.snapToGrid) {
-			ImGui::SliderFloat("Grid Size", &editorState.gridSize, 1.0f, 20.0f); // TODO: Add snap to grid functionality here
+		for (int i = 0;i < editorState.currentWayPoints.size();i++) {
+			ImGui::Text("Points %d: %.1f, %.1f", (int)i + 1, editorState.currentWayPoints[i].x,
+				editorState.currentWayPoints[i].z);
 		}
+		if (ImGui::Button("Finish Way")) {
+			if (editorState.currentTool == EditorState::ADD_ROAD) {
+				RoadSegment newRoad;
+				newRoad.vertices = editorState.currentWayPoints; // TODO: Problem could be here. of NaN points. Chekc later.
 
-		// Current Way Points selected
+				newRoad.type = editorState.selectedRoadType;
 
-		if (!editorState.currentWayPoints.empty()) {
-			ImGui::Separator();
-			ImGui::Text("Current Way Points:");
+				roadsByType[editorState.selectedRoadType].push_back(newRoad);
 
-			for (int i = 0;i < editorState.currentWayPoints.size();i++) {
-				ImGui::Text("Points %d: %.1f, %.1f", (int)i + 1, editorState.currentWayPoints[i].x,
-					editorState.currentWayPoints[i].z);
+				setupRoadBuffers();
 			}
-			if (ImGui::Button("Finish Way")) {
-				if (editorState.currentTool == EditorState::ADD_ROAD) {
-					RoadSegment newRoad;
-					newRoad.vertices = editorState.currentWayPoints; // TODO: Problem could be here. of NaN points. Chekc later.
 
-					newRoad.type = editorState.selectedRoadType;
-
-					roadsByType[editorState.selectedRoadType].push_back(newRoad);
-
-					setupRoadBuffers();
-				}
-
-				editorState.currentWayPoints.clear();
+			editorState.currentWayPoints.clear();
 
 		}
-		
-		}
 
-		ImGui::End();
+	}
+
+	ImGui::End();
 }
 
- //Handles the way points using the ray and ground intersection points
+//Handles the way points using the ray and ground intersection points
 void HandleMapInteraction(Camera& cam, GLFWwindow* window) {
 	if (ImGui::GetIO().WantCaptureMouse) return;
 

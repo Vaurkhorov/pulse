@@ -1,5 +1,5 @@
 
-#include"../../headers/Inputs.hpp"
+#include"../../headers/Visualisation_Headers/Inputs.hpp"
 
 
 void Input::mouse_callback(GLFWwindow* window, double xpos, double ypos) {

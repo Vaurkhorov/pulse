@@ -1,4 +1,4 @@
-#include"../../headers/osm.hpp"
+#include"../../headers/Visualisation_Headers/osm.hpp"
 
 std::map<std::string, std::vector<RoadSegment>> roadsByType;
 std::vector<std::vector<glm::vec3>> buildingFootprints;
@@ -68,7 +68,7 @@ void parseOSM(const std::string& filename) {
 							osmium::Location loc = location_handler.get_node_location(node_ref.ref()); // loc contains the locations on earth in a 32bit integer for x and y
 
 							if (!loc.valid()) continue; // checks if the location is not out of bounds
-						
+
 							// Latitute and Longitude.
 							double lat = loc.lat();
 							double lon = loc.lon();
@@ -91,7 +91,7 @@ void parseOSM(const std::string& filename) {
 							// TODO: make the height dynamic
 							float y = 0.0f;
 
-							way_vertices.emplace_back(x, y, z);		
+							way_vertices.emplace_back(x, y, z);
 						}
 						catch (const osmium::invalid_location&) {
 							// TODO: add the logic to skip the invalid locations
@@ -145,7 +145,7 @@ void parseOSM(const std::string& filename) {
 
 		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
 		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
-		
+
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error while Parsing OSM:: " << e.what() << std::endl;

@@ -1,4 +1,4 @@
-#include"../../headers/renderData.hpp"
+#include"../../headers/Visualisation_Headers/renderData.hpp"
 void setupRoadBuffers();
 void setupBuildingBuffers();
 void setupGroundBuffer();
@@ -61,7 +61,7 @@ void setupBuildingBuffers() {
 
 		RenderData data;
 		glGenVertexArrays(1, &data.VAO);
-		
+
 		glGenBuffers(1, &data.VBO);
 
 		glBindVertexArray(data.VAO);
@@ -82,7 +82,7 @@ void setupBuildingBuffers() {
 
 void setupGroundBuffer() {
 	glGenVertexArrays(1, &groundRenderData.VAO);
-	
+
 	glGenBuffers(1, &groundRenderData.VBO);
 
 	glBindVertexArray(groundRenderData.VAO);
@@ -109,7 +109,7 @@ void drawBuildings(Shader& shader) {
 		shader.setVec3("color", color);
 		glBindVertexArray(rd.VAO);
 		// TODO: why so many PolygonModes?
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); 
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(rd.vertexCount));
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		shader.setVec3("color", glm::vec3(0.2f, 0.2f, 0.25f));
@@ -134,7 +134,7 @@ void drawRoads(Shader& shader, const std::map<std::string, glm::vec3>& roadColor
 		glLineWidth(width);
 		shader.setVec3("color", roadColors.at(type));
 		glBindVertexArray(rd.VAO);
-		glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(rd.vertexCount));	
+		glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(rd.vertexCount));
 	}
 	glLineWidth(1.0f);
 }

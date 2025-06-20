@@ -1,4 +1,4 @@
-﻿#include "../../headers/helpingFunctions.hpp"
+#include "../../headers/Visualisation_Headers/helpingFunctions.hpp"
 
 float getRandomBuildingHeight();
 
