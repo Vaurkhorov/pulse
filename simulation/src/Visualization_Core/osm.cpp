@@ -1,10 +1,14 @@
-#include"../../headers/Visualisation_Headers/osm.hpp"
+﻿#include"../../headers/Visualisation_Headers/osm.hpp"
 
 std::map<std::string, std::vector<RoadSegment>> roadsByType;
 std::vector<std::vector<glm::vec3>> buildingFootprints;
 std::vector<glm::vec3> groundPlaneVertices;
 std::vector<RenderData> buildingRenderData;
 std::map<std::string, RenderData> roadRenderData;
+
+// Global device pointer 
+LaneCell* d_laneCells = nullptr;
+
 
 void parseOSM(const std::string& filename) {
 	// setting up a location handler using a on-disk index for larger files
@@ -146,6 +150,105 @@ void parseOSM(const std::string& filename) {
 		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
 		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
 
+
+		// Parsing for CUDA Simulation
+		std::vector<TempEdge> temp_edges;
+		temp_edges.reserve(1'000'000);
+
+		int next_id = 0;
+		// iterate each RoadSegment in all categories
+		for (auto const& kv : roadsByType) {
+			for (auto const& seg : kv.second) {
+				int lanes = seg.lanes > 0 ? seg.lanes : 2;
+				auto const& verts = seg.vertices;
+				for (size_t i = 0; i + 1 < verts.size(); ++i) {
+					glm::vec3 a = verts[i], b = verts[i + 1];
+					float dx = b.x - a.x, dz = b.z - a.z;
+					float len = std::hypot(dx, dz);
+					for (int L = 0; L < lanes; ++L) {
+						int u = next_id++;
+						int v = next_id++;
+						temp_edges.push_back({ u, v, L, len });
+						// assume bidirectional; if seg.oneway then skip this
+						temp_edges.push_back({ v, u, L, len });
+					}
+				}
+			}
+		}
+
+		int N = next_id;
+		std::vector<LaneCell> lane_cells(N);
+		for (int i = 0; i < N; ++i) {
+			lane_cells[i] = { -1, -1, -1, 0.0f };
+		}
+
+		// stay‑in‑lane + length
+		for (auto const& e : temp_edges) {
+			lane_cells[e.u].next_in_lane = e.v;
+			lane_cells[e.u].length = e.length;
+		}
+
+		// change‑lane adjacency via hashmap
+		struct Key { int u, v, L; };
+		struct KH {
+			size_t operator()(Key const& k) const noexcept {
+				return ((size_t)k.u * 31 + k.v) * 31 + k.L;
+			}
+		};
+		struct KE {
+			bool operator()(Key const& a, Key const& b) const noexcept {
+				return a.u == b.u && a.v == b.v && a.L == b.L;
+			}
+		};
+
+		std::unordered_map<Key, int, KH, KE> mapEdge;
+		mapEdge.reserve(temp_edges.size());
+		for (auto const& e : temp_edges) {
+			mapEdge[{e.u, e.v, e.lane_index}] = e.u;
+		}
+		for (auto const& e : temp_edges) {
+			auto itL = mapEdge.find({ e.u,e.v,e.lane_index + 1 });
+			if (itL != mapEdge.end()) lane_cells[e.u].left_cell = itL->second;
+			auto itR = mapEdge.find({ e.u,e.v,e.lane_index - 1 });
+			if (itR != mapEdge.end()) lane_cells[e.u].right_cell = itR->second;
+		}
+		
+
+        // Printing the content of the mapEdge and lane_cells  
+        std::cout << "Map Edge Content:" << std::endl;  
+        for (const auto& entry : mapEdge) {  
+           const auto& key = entry.first;  
+           int value = entry.second;  
+           std::cout << "Key(u: " << key.u << ", v: " << key.v << ", L: " << key.L << ") -> Value: " << value << std::endl;  
+        }  
+
+        /*std::cout << "\nLane Cells Content:" << std::endl;  
+        for (size_t i = 0; i < lane_cells.size(); ++i) {  
+           const auto& cell = lane_cells[i];  
+           std::cout << "LaneCell[" << i << "] -> next_in_lane: " << cell.next_in_lane  
+                     << ", left_cell: " << cell.left_cell  
+                     << ", right_cell: " << cell.right_cell  
+                     << ", length: " << cell.length << std::endl;  
+        }*/
+
+		//// upload to GPU
+		//size_t bytes = sizeof(LaneCell) * lane_cells.size();
+		//cudaError_t err = cudaMalloc(&d_laneCells, bytes);
+		//if (err != cudaSuccess) {
+		//	std::cerr << "cudaMalloc failed: " << cudaGetErrorString(err) << "\n";
+		//	return;
+		//}
+		//err = cudaMemcpy(d_laneCells, lane_cells.data(), bytes, cudaMemcpyHostToDevice);
+		//if (err != cudaSuccess) {
+		//	std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(err) << "\n";
+		//	cudaFree(d_laneCells);
+		//	d_laneCells = nullptr;
+		//	return;
+		//}
+
+		
+
+		std::cout << "Built + uploaded " << lane_cells.size() << " lane-cells\n";
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error while Parsing OSM:: " << e.what() << std::endl;

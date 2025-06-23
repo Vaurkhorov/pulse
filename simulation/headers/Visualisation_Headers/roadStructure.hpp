@@ -1,4 +1,5 @@
 #pragma once
+
 #include<vector>
 #include"renderData.hpp"
 #include<string>
@@ -10,6 +11,7 @@
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
 	std::string type; // type of road
+	int lanes = 2; // default number of lanes  
 };
 
 // TODO: Add more road types here and also add missing types case handling here

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #define _CRT_NONSTDC_NO_DEPRECATE
@@ -11,9 +11,25 @@
 #include <string>
 #include <osmium/io/any_input.hpp>
 #include <osmium/visitor.hpp>
+#include <unordered_map>
 #include "helpingFunctions.hpp"
 #include"roadStructure.hpp" 
 #include"renderData.hpp"
 
+
+// GPU‑side structure: one per lane‑cell
+struct LaneCell {
+    int next_in_lane;   // ID of the next cell forward in this lane (or -1)
+    int left_cell;      // ID of the same-position cell in left lane (or -1)
+    int right_cell;     // ID of the same-position cell in right lane (or -1)
+    float length;       // geometric length of this cell (m)
+};
+
+// Helper struct while building on the host
+struct TempEdge {
+    int            u, v;         // host IDs of this cell and the next in‑lane cell
+    int            lane_index;   // 0 = rightmost, increasing to the left
+    float          length;       // meters
+};
 // For parsing .osm Files into a data structure for successfull rendering
 void parseOSM(const std::string& filename);
