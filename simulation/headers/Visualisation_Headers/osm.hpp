@@ -27,7 +27,8 @@ struct LaneCell {
 
 // Helper struct while building on the host
 struct TempEdge {
-    int            u, v;         // host IDs of this cell and the next in‑lane cell
+    int            from_node_osm; // OSM node ID at start of this segment
+    int            to_node_osm;   // OSM node ID at end of this segment
     int            lane_index;   // 0 = rightmost, increasing to the left
     float          length;       // meters
 };

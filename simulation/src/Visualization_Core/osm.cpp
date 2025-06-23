@@ -113,7 +113,12 @@ void parseOSM(const std::string& filename) {
 						segment.vertices = way_vertices;
 						segment.type = highway_value;
 
-						roadsByType[category].push_back(segment);
+						for (auto const& node_ref : way.nodes()) {
+							segment.node_refs.push_back(node_ref.ref()); // storing the node IDs here
+						}
+						segment.vertices = way_vertices;
+						roadsByType[category].push_back(std::move(segment));
+
 					}
 					else if (is_building && way_vertices.size() >= 3) // close the building if it's not closed by default 
 					{
@@ -167,20 +172,23 @@ void parseOSM(const std::string& filename) {
 					glm::vec3 a = verts[i], b = verts[i + 1];
 					float dx = b.x - a.x, dz = b.z - a.z; // The diffs between the coords
 					float len = std::hypot(dx, dz); // The lenth of the lane
+
 					for (int l = 0;l < lanes;l++) {
-						int u = next_id++;
-						int v = next_id++;
+						int osm_u = seg.node_refs[i];
+						int osm_v = seg.node_refs[i + 1];
+						
+
 						// Our adjancy list kind of data structure. with the lenght as the weight
-						temp_edges.push_back({ u,v,l,len });
+						temp_edges.push_back({ osm_u, osm_v, l, len });
 						// assuming all lanes bidirectional; 
 						// TODO: if seg.oneway then skip this. Add "oneway" tag parsing later.
-						temp_edges.push_back({ v, u, l, len });
+						temp_edges.push_back({ osm_v, osm_u, l, len });
 					}
 				}
 			}
 		}
 		
-		int n = next_id;
+		int n = (int)temp_edges.size();;
 		std::vector<LaneCell> lane_cells(n);
 
 		for (size_t i = 0;i < n;i++) {
@@ -188,10 +196,49 @@ void parseOSM(const std::string& filename) {
 		}
 
 		// stay‑in‑lane + length
-		for (auto const& it : temp_edges) { // iterating throught the adjancy list and storing the values in the actual vector of struct.
-			lane_cells[it.u].next_in_lane = it.v;
-			lane_cells[it.u].length = it.length;
-		} // stored all the data into the actual DS, with the lanes indexes according to the nearby lanes ID
+		// 1) Build two hash maps :
+		//     • `outMap` : (from_node, lane_index) → cellID
+		//     • `inMap`  : (to_node,   lane_index) → cellID
+		//
+		using Key2 = std::pair<int, int>;           // (nodeID, laneIdx)
+		struct Key2Hash {
+			size_t operator()(Key2 const& k) const noexcept {
+				return (size_t)k.first * 31 + (size_t)k.second;
+			}
+		};
+		struct Key2Eq {
+			bool operator()(Key2 const& a, Key2 const& b) const noexcept {
+				return a.first == b.first && a.second == b.second;
+			}
+		};
+
+		std::unordered_map<Key2, int, Key2Hash, Key2Eq> outMap, inMap;
+		outMap.reserve(temp_edges.size());
+		inMap.reserve(temp_edges.size());
+
+		// assign each temp_edge index as the cellID
+		for (int i = 0; i < n; ++i) {
+			auto& e = temp_edges[i];
+			// map from (from_node_osm, lane_index) -> cell index i
+			outMap[{ e.from_node_osm, e.lane_index }] = i;
+			inMap[{ e.to_node_osm, e.lane_index }] = i;
+			lane_cells[i].length = e.length;
+			lane_cells[i].next_in_lane = -1;
+			lane_cells[i].left_cell =
+				lane_cells[i].right_cell = -1;
+		}
+
+
+		// 2) Fill stay-in-lane by looking up who “starts” at our `to_node`
+		for (int i = 0; i < n; ++i) {
+			auto& e = temp_edges[i];
+			auto it = outMap.find({ e.to_node_osm, e.lane_index });
+			if (it != outMap.end()) {
+				lane_cells[i].next_in_lane = it->second;
+			}
+		}
+
+
 
 		// Changing-lane adjancey list making using a Hashmap
 		std::unordered_map<Key, int, KH, KE> mapEdge; // 2 dataTypes, the hashfunction and the equality opeartor.
@@ -199,15 +246,44 @@ void parseOSM(const std::string& filename) {
 
 		// filing the hashMap;
 		for (auto const& it : temp_edges) {
-			mapEdge[{it.u, it.v, it.lane_index}] = it.u;
+			mapEdge[{it.from_node_osm, it.to_node_osm, it.lane_index}] = it.from_node_osm;
 		}
 
-		for (auto const& it : temp_edges) {
-			auto itL = mapEdge.find({ it.u, it.v, it.lane_index + 1 });
-			if (itL != mapEdge.end()) lane_cells[it.u].left_cell = itL->second; // if left lane exists then make it the left lane in the DS otherwise keep it -1.
-			auto itR = mapEdge.find({ it.u,it.v,it.lane_index - 1 });
-			if (itR != mapEdge.end()) lane_cells[it.u].right_cell = itR->second;			// if left lane exists then make it the left lane in the DS otherwise keep it -1.
+		// 1) Build the 3-key → cellIndex map once:
+		struct Key3 { int u, v, L; };
+		struct Key3Hash {
+			size_t operator()(Key3 const& k) const noexcept {
+				return ((size_t)k.u * 1315423911u) ^ (k.v << 16) ^ k.L;
+			}
+		};
+		struct Key3Eq {
+			bool operator()(Key3 const& a, Key3 const& b) const noexcept {
+				return a.u == b.u && a.v == b.v && a.L == b.L;
+			}
+		};
+
+		std::unordered_map<Key3, int, Key3Hash, Key3Eq> laneMap;
+		laneMap.reserve(n);
+		for (int i = 0; i < n; ++i) {
+			auto& e = temp_edges[i];
+			laneMap[{ e.from_node_osm, e.to_node_osm, e.lane_index }] = i;
 		}
+
+		// 2) Fill left_cell/right_cell by looking up cell i → neighbor index:
+		for (int i = 0; i < n; ++i) {
+			auto& e = temp_edges[i];
+			// left lane = L+1
+			auto itL = laneMap.find({ e.from_node_osm, e.to_node_osm, e.lane_index + 1 });
+				if(itL != laneMap.end()) {
+				lane_cells[i].left_cell = itL->second;
+			}
+			// right lane = L-1
+				auto it = laneMap.find({ e.from_node_osm, e.to_node_osm, e.lane_index - 1 });
+				if(it != laneMap.end()) {
+				lane_cells[i].right_cell = it->second;
+			}
+		}
+
 
         // Printing the content of the mapEdge and lane_cells  
         /*std::cout << "Map Edge Content:" << std::endl;  
@@ -217,14 +293,15 @@ void parseOSM(const std::string& filename) {
            std::cout << "Key(u: " << key.u << ", v: " << key.v << ", L: " << key.L << ") -> Value: " << value << std::endl;  
         }*/  
 
-        /*std::cout << "\nLane Cells Content:" << std::endl;  
+        std::cout << "\nLane Cells Content:" << std::endl;  
+		std::ofstream ss("LaneData.txt");
         for (size_t i = 0; i < lane_cells.size(); ++i) {  
-           const auto& cell = lane_cells[i];  
-           std::cout << "LaneCell[" << i << "] -> next_in_lane: " << cell.next_in_lane  
-                     << ", left_cell: " << cell.left_cell  
-                     << ", right_cell: " << cell.right_cell  
-                     << ", length: " << cell.length << std::endl;  
-        }*/
+			const auto& cell = lane_cells[i];
+           ss << "{" << cell.next_in_lane << "," << cell.left_cell  
+                     << "," << cell.right_cell  
+                     << "," << cell.length << "}," << std::endl;
+        }
+		// storing the data in the file in the format -> nextLaneid -> left land ID -> right lane id and length
 
 		//// uploading to GPU
 		//size_t bytes = sizeof(LaneCell) * lane_cells.size();
@@ -244,7 +321,7 @@ void parseOSM(const std::string& filename) {
 		
 
 		std::cout << "Built: " << lane_cells.size() << " lane-cells\n";
-	}
+	}	
 	catch (const std::exception& e) {
 		std::cerr << "Error while Parsing OSM:: " << e.what() << std::endl;
 	}

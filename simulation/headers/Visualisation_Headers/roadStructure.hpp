@@ -2,6 +2,7 @@
 
 #include<vector>
 #include"renderData.hpp"
+#include "osm.hpp"
 #include<string>
 //#include <GLFW/glfw3.h>
 #include<glad/glad.h>
@@ -11,6 +12,7 @@
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
 	std::string type; // type of road
+	std::vector<osmium::unsigned_object_id_type> node_refs;  // node IDs
 	int lanes = 2; // default number of lanes  
 };
 
