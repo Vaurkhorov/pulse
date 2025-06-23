@@ -31,5 +31,20 @@ struct TempEdge {
     int            lane_index;   // 0 = rightmost, increasing to the left
     float          length;       // meters
 };
+
+// change‑lane adjacency via hashmap
+struct Key { int u, v, L; }; // u,v are host IDs of this cell and the next in‑lane cell. L is the length.
+
+struct KH { // Key Hash Function -> A generic Hash function to calclutalte the hash values of the key.
+	size_t operator()(Key const& k) const noexcept {
+        //noexcept guarantees that this function will not throw exceptions, which is a requirement for hash functions in std::unordered_map.
+		return ((size_t)k.u * 31 + k.v) * 31 + k.L;
+	}
+};
+struct KE { // HashMap's equality checkup -> Telling how to check the equaltiy 
+	bool operator()(Key const& a, Key const& b) const noexcept {
+		return a.u == b.u && a.v == b.v && a.L == b.L;
+	}
+};
 // For parsing .osm Files into a data structure for successfull rendering
 void parseOSM(const std::string& filename);

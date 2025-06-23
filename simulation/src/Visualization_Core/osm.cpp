@@ -152,75 +152,70 @@ void parseOSM(const std::string& filename) {
 
 
 		// Parsing for CUDA Simulation
-		std::vector<TempEdge> temp_edges;
-		temp_edges.reserve(1'000'000);
+		std::vector<TempEdge> temp_edges; // Stores Temperary edges during the loop
+		temp_edges.reserve(1000000); // Reserving 1 million locations for now. TODO: can reduce it to save some space.
 
 		int next_id = 0;
+
 		// iterate each RoadSegment in all categories
 		for (auto const& kv : roadsByType) {
 			for (auto const& seg : kv.second) {
-				int lanes = seg.lanes > 0 ? seg.lanes : 2;
+				int lanes = seg.lanes > 0 ? seg.lanes : 2; // Number of lanes; For now, default number of lanes is 2 in the struct of the roadType
+				// TODO: remove the hard coded number of lanes later.
 				auto const& verts = seg.vertices;
-				for (size_t i = 0; i + 1 < verts.size(); ++i) {
+				for (int i = 0;i + 1 < verts.size();i++) {
 					glm::vec3 a = verts[i], b = verts[i + 1];
-					float dx = b.x - a.x, dz = b.z - a.z;
-					float len = std::hypot(dx, dz);
-					for (int L = 0; L < lanes; ++L) {
+					float dx = b.x - a.x, dz = b.z - a.z; // The diffs between the coords
+					float len = std::hypot(dx, dz); // The lenth of the lane
+					for (int l = 0;l < lanes;l++) {
 						int u = next_id++;
 						int v = next_id++;
-						temp_edges.push_back({ u, v, L, len });
-						// assume bidirectional; if seg.oneway then skip this
-						temp_edges.push_back({ v, u, L, len });
+						// Our adjancy list kind of data structure. with the lenght as the weight
+						temp_edges.push_back({ u,v,l,len });
+						// assuming all lanes bidirectional; 
+						// TODO: if seg.oneway then skip this. Add "oneway" tag parsing later.
+						temp_edges.push_back({ v, u, l, len });
 					}
 				}
 			}
 		}
+		
+		int n = next_id;
+		std::vector<LaneCell> lane_cells(n);
 
-		int N = next_id;
-		std::vector<LaneCell> lane_cells(N);
-		for (int i = 0; i < N; ++i) {
-			lane_cells[i] = { -1, -1, -1, 0.0f };
+		for (size_t i = 0;i < n;i++) {
+			lane_cells[i] = { -1,-1,-1,0.0f }; // initializing the laneCell vector as Null.
 		}
 
 		// stay‑in‑lane + length
-		for (auto const& e : temp_edges) {
-			lane_cells[e.u].next_in_lane = e.v;
-			lane_cells[e.u].length = e.length;
-		}
+		for (auto const& it : temp_edges) { // iterating throught the adjancy list and storing the values in the actual vector of struct.
+			lane_cells[it.u].next_in_lane = it.v;
+			lane_cells[it.u].length = it.length;
+		} // stored all the data into the actual DS, with the lanes indexes according to the nearby lanes ID
 
-		// change‑lane adjacency via hashmap
-		struct Key { int u, v, L; };
-		struct KH {
-			size_t operator()(Key const& k) const noexcept {
-				return ((size_t)k.u * 31 + k.v) * 31 + k.L;
-			}
-		};
-		struct KE {
-			bool operator()(Key const& a, Key const& b) const noexcept {
-				return a.u == b.u && a.v == b.v && a.L == b.L;
-			}
-		};
-
-		std::unordered_map<Key, int, KH, KE> mapEdge;
+		// Changing-lane adjancey list making using a Hashmap
+		std::unordered_map<Key, int, KH, KE> mapEdge; // 2 dataTypes, the hashfunction and the equality opeartor.
 		mapEdge.reserve(temp_edges.size());
-		for (auto const& e : temp_edges) {
-			mapEdge[{e.u, e.v, e.lane_index}] = e.u;
+
+		// filing the hashMap;
+		for (auto const& it : temp_edges) {
+			mapEdge[{it.u, it.v, it.lane_index}] = it.u;
 		}
-		for (auto const& e : temp_edges) {
-			auto itL = mapEdge.find({ e.u,e.v,e.lane_index + 1 });
-			if (itL != mapEdge.end()) lane_cells[e.u].left_cell = itL->second;
-			auto itR = mapEdge.find({ e.u,e.v,e.lane_index - 1 });
-			if (itR != mapEdge.end()) lane_cells[e.u].right_cell = itR->second;
+
+		for (auto const& it : temp_edges) {
+			auto itL = mapEdge.find({ it.u, it.v, it.lane_index + 1 });
+			if (itL != mapEdge.end()) lane_cells[it.u].left_cell = itL->second; // if left lane exists then make it the left lane in the DS otherwise keep it -1.
+			auto itR = mapEdge.find({ it.u,it.v,it.lane_index - 1 });
+			if (itR != mapEdge.end()) lane_cells[it.u].right_cell = itR->second;			// if left lane exists then make it the left lane in the DS otherwise keep it -1.
 		}
-		
 
         // Printing the content of the mapEdge and lane_cells  
-        std::cout << "Map Edge Content:" << std::endl;  
+        /*std::cout << "Map Edge Content:" << std::endl;  
         for (const auto& entry : mapEdge) {  
            const auto& key = entry.first;  
            int value = entry.second;  
            std::cout << "Key(u: " << key.u << ", v: " << key.v << ", L: " << key.L << ") -> Value: " << value << std::endl;  
-        }  
+        }*/  
 
         /*std::cout << "\nLane Cells Content:" << std::endl;  
         for (size_t i = 0; i < lane_cells.size(); ++i) {  
@@ -231,7 +226,7 @@ void parseOSM(const std::string& filename) {
                      << ", length: " << cell.length << std::endl;  
         }*/
 
-		//// upload to GPU
+		//// uploading to GPU
 		//size_t bytes = sizeof(LaneCell) * lane_cells.size();
 		//cudaError_t err = cudaMalloc(&d_laneCells, bytes);
 		//if (err != cudaSuccess) {
@@ -248,7 +243,7 @@ void parseOSM(const std::string& filename) {
 
 		
 
-		std::cout << "Built + uploaded " << lane_cells.size() << " lane-cells\n";
+		std::cout << "Built: " << lane_cells.size() << " lane-cells\n";
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error while Parsing OSM:: " << e.what() << std::endl;
