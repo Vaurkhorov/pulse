@@ -10,6 +10,7 @@
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
 	std::string type; // type of road
+	int laneCount = 1;
 };
 
 // TODO: Add more road types here and also add missing types case handling here
