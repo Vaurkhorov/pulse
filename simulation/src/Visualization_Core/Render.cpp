@@ -2,10 +2,13 @@
 void setupRoadBuffers();
 void setupBuildingBuffers();
 void setupGroundBuffer();
+void setupLaneBuffer();
 RenderData groundRenderData;
+std::map<std::string, RenderData> laneRenderDataByType;
 void drawBuildings(Shader& shader);
 void drawRoads(Shader& shader, const std::map<std::string, glm::vec3>& roadColors);
 void drawGround(Shader& shader);
+void drawLanes(Shader& shader, const std::map<std::string, glm::vec3>& roadColors);
 
 void setupRoadBuffers()
 {
@@ -98,6 +101,32 @@ void setupGroundBuffer() {
 	groundRenderData.vertexCount = groundPlaneVertices.size();
 }
 
+void setupLaneBuffer() {
+	for (auto& it : laneLineVerticesByType) {
+		const auto& type = it.first;
+		const auto& verts = it.second;
+
+		if (verts.size() == 0) continue;
+
+		RenderData ln;
+		glGenVertexArrays(1, &ln.VAO);
+		glGenBuffers(1, &ln.VBO);
+
+		glBindVertexArray(ln.VAO);
+		glBindBuffer(GL_ARRAY_BUFFER, ln.VBO);
+		glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(glm::vec3), verts.data(), GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)(0));
+		glEnableVertexAttribArray(0);
+		glBindVertexArray(0);
+
+		ln.vertexCount = verts.size();
+		laneRenderDataByType[type] = ln;
+	}
+
+}
+
+
 // TODO: Enhance the buildings drawing to 3D view and  
 // Draws the Buildings
 void drawBuildings(Shader& shader) {
@@ -127,10 +156,10 @@ void drawRoads(Shader& shader, const std::map<std::string, glm::vec3>& roadColor
 		if (roadRenderData.count(type) == 0)	continue;
 		const auto& rd = roadRenderData.at(type);
 		if (rd.vertexCount == 0) continue;
-		float width = 1.0f;
-		if (type == "motorway") width = 3.0f;
-		else if (type == "trunk" || type == "primary") width = 2.5f;
-		else if (type == "secondary" || type == "tertiary") width = 2.0f;
+		float width = 7.0f;
+		if (type == "motorway") width = 16.0f;
+		else if (type == "trunk" || type == "primary") width = 10.5f;
+		else if (type == "secondary" || type == "tertiary") width = 8.0f;
 		glLineWidth(width);
 		shader.setVec3("color", roadColors.at(type));
 		glBindVertexArray(rd.VAO);
@@ -144,4 +173,28 @@ void drawGround(Shader& shader) {
 	shader.setVec3("color", glm::vec3(0.1f, 0.1f, 0.1f));
 
 	glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(groundRenderData.vertexCount)); // TODO: wtf is Triangle Fan?
+}
+
+// Making the Lanes from the vertices
+void drawLanes(Shader& shader, const std::map<std::string, glm::vec3>& roadColors) {
+
+	// a little dark toned lane color
+	auto darker = [&](glm::vec3 c) {
+		return glm::clamp(c * glm::vec3(0.7f), 0.0f, 1.0f); // restricts the value between 0 and 1 or as we tell
+		};
+
+	glLineWidth(1.0f);
+	for (auto it = roadHierarchy.rbegin(); it != roadHierarchy.rend(); it++) {
+		const std::string& type = *it;
+		auto roadIt = laneRenderDataByType.find(type);
+		if (roadIt == laneRenderDataByType.end()) continue;
+		const auto& ln = roadIt->second;
+		if (ln.vertexCount == 0) continue;
+
+		shader.setVec3("color", darker(roadColors.at(type)));
+		glBindVertexArray(ln.VAO);
+		glDrawArrays(GL_LINES, 0, ln.vertexCount);
+	}
+
+	glBindVertexArray(0);
 }

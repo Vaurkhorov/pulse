@@ -1,12 +1,11 @@
 ﻿#include"../../headers/Visualisation_Headers/osm.hpp"
 
 std::map<std::string, std::vector<RoadSegment>> roadsByType;
+std::map<std::string, std::vector<glm::vec3>> laneLineVerticesByType;
 std::vector<std::vector<glm::vec3>> buildingFootprints;
 std::vector<glm::vec3> groundPlaneVertices;
 std::vector<RenderData> buildingRenderData;
 std::map<std::string, RenderData> roadRenderData;
-
-// Global device pointer 
 LaneCell* d_laneCells = nullptr;
 
 
@@ -183,6 +182,34 @@ void parseOSM(const std::string& filename) {
 						// assuming all lanes bidirectional; 
 						// TODO: if seg.oneway then skip this. Add "oneway" tag parsing later.
 						temp_edges.push_back({ osm_v, osm_u, l, len });
+
+						// storing the vertices's actual position for rendering with an offset so that they don't overlap the road center
+						float offset = (l - (l - 1) / 2.0f);
+						float spacing = 0.2f; // TODO: change by trial and err
+
+						for (int i = 0;i < (int)verts.size() - 1;i++) {
+							glm::vec3 x = verts[i];
+							glm::vec3 y = verts[i + 1];
+
+							// computing perpendicular in XZ-plane
+							glm::vec2 p{ y.x - x.x, y.z - x.z };
+							float len = glm::length(p);
+							if (len < 1e-6f) continue; // very small change so nvm.
+							glm::vec2 unit{ -p.y / len, p.x / len }; // unit normal
+
+							// applying offset in XZ
+
+							glm::vec3 x0 = { x.x + unit.x * offset * spacing,
+											 x.y,
+											 x.z + unit.y * offset * spacing };
+							glm::vec3 y0 = { y.x + unit.x * offset * spacing,
+											y.y ,
+											y.z + unit.y * offset * spacing };
+
+							laneLineVerticesByType[kv.first].push_back(x0);
+							laneLineVerticesByType[kv.first].push_back(y0);
+
+						}
 					}
 				}
 			}
@@ -199,19 +226,7 @@ void parseOSM(const std::string& filename) {
 		// 1) Build two hash maps :
 		//     • `outMap` : (from_node, lane_index) → cellID
 		//     • `inMap`  : (to_node,   lane_index) → cellID
-		//
-		using Key2 = std::pair<int, int>;           // (nodeID, laneIdx)
-		struct Key2Hash {
-			size_t operator()(Key2 const& k) const noexcept {
-				return (size_t)k.first * 31 + (size_t)k.second;
-			}
-		};
-		struct Key2Eq {
-			bool operator()(Key2 const& a, Key2 const& b) const noexcept {
-				return a.first == b.first && a.second == b.second;
-			}
-		};
-
+		
 		std::unordered_map<Key2, int, Key2Hash, Key2Eq> outMap, inMap;
 		outMap.reserve(temp_edges.size());
 		inMap.reserve(temp_edges.size());
@@ -250,18 +265,6 @@ void parseOSM(const std::string& filename) {
 		}
 
 		// 1) Build the 3-key → cellIndex map once:
-		struct Key3 { int u, v, L; };
-		struct Key3Hash {
-			size_t operator()(Key3 const& k) const noexcept {
-				return ((size_t)k.u * 1315423911u) ^ (k.v << 16) ^ k.L;
-			}
-		};
-		struct Key3Eq {
-			bool operator()(Key3 const& a, Key3 const& b) const noexcept {
-				return a.u == b.u && a.v == b.v && a.L == b.L;
-			}
-		};
-
 		std::unordered_map<Key3, int, Key3Hash, Key3Eq> laneMap;
 		laneMap.reserve(n);
 		for (int i = 0; i < n; ++i) {
@@ -293,14 +296,14 @@ void parseOSM(const std::string& filename) {
            std::cout << "Key(u: " << key.u << ", v: " << key.v << ", L: " << key.L << ") -> Value: " << value << std::endl;  
         }*/  
 
-        std::cout << "\nLane Cells Content:" << std::endl;  
+        /*std::cout << "\nLane Cells Content:" << std::endl;  
 		std::ofstream ss("LaneData.txt");
         for (size_t i = 0; i < lane_cells.size(); ++i) {  
 			const auto& cell = lane_cells[i];
            ss << "{" << cell.next_in_lane << "," << cell.left_cell  
                      << "," << cell.right_cell  
                      << "," << cell.length << "}," << std::endl;
-        }
+        }*/
 		// storing the data in the file in the format -> nextLaneid -> left land ID -> right lane id and length
 
 		//// uploading to GPU

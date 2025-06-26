@@ -14,7 +14,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cmath> 
-#include<glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+
 
 // The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
@@ -129,6 +130,7 @@ int main() {
     setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
+    setupLaneBuffer();
 
     // Initializing Imgui
     InitializeImGui(window);
@@ -152,6 +154,7 @@ int main() {
 
         drawGround(ourShader);
         drawRoads(ourShader, roadColors);
+        drawLanes(ourShader, roadColors);
         drawBuildings(ourShader);
 
         // Currnelty the below functions are giving runtime errors(mostly null pointer error)
