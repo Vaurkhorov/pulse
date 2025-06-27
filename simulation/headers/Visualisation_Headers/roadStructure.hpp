@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include<vector>
 #include"renderData.hpp"
@@ -12,6 +12,7 @@
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
 	std::string type; // type of road
+	int laneCount = 1;
 	std::vector<osmium::unsigned_object_id_type> node_refs;  // node IDs
 	int lanes = 2; // default number of lanes  
 };
@@ -72,6 +73,29 @@ struct Key3Eq {
 		return a.u == b.u && a.v == b.v && a.L == b.L;
 	}
 };
+
+// defines a strict weak ordering for glm::vec3 objects based on their x, y, and z components, allowing for comparison with a specified tolerance
+struct Vec3Less {
+    bool operator()(const glm::vec3& a, const glm::vec3& b) const {
+        const float eps = 0.01f;
+        if (std::abs(a.x - b.x) > eps) return a.x < b.x;
+        if (std::abs(a.y - b.y) > eps) return a.y < b.y;
+        return a.z < b.z;
+    }
+};
+
+// represents a point along a path with attributes for position, speed, interpolation, segment index, 3D coordinates, and active status
+struct Dot {
+    float s; // position along the path (arc length)
+    float v; // current speed
+    float t; // interpolation parameter between points
+    size_t segment; // current segment index
+    glm::vec3 position;
+    bool active;
+};
+
+extern std::vector<Dot> dots;
+extern std::vector<glm::vec3> traversalPath; // The path all dots will
 
 // TODO: Add more road types here and also add missing types case handling here
 // Road type categories for visualization

@@ -175,6 +175,17 @@ void drawGround(Shader& shader) {
 	glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(groundRenderData.vertexCount)); // TODO: wtf is Triangle Fan?
 }
 
+// drawing the lacars from the dot vector
+void DrawAllDots(const Shader& shader) {
+	glPointSize(12.0f);
+	shader.setVec3("color", glm::vec3(1, 0, 0));
+	glBegin(GL_POINTS);
+	for (const auto& dot : dots) {
+		if (dot.active)
+			glVertex3f(dot.position.x, dot.position.y + 2.0f, dot.position.z);
+	}
+	glEnd(); 
+  
 // Making the Lanes from the vertices
 void drawLanes(Shader& shader, const std::map<std::string, glm::vec3>& roadColors) {
 

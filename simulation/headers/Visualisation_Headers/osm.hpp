@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #define _CRT_NONSTDC_NO_DEPRECATE
@@ -11,10 +11,15 @@
 #include <string>
 #include <osmium/io/any_input.hpp>
 #include <osmium/visitor.hpp>
+#include <set>
+#include <stack>
 #include <unordered_map>
 #include "helpingFunctions.hpp"
 #include"roadStructure.hpp" 
-#include"renderData.hpp"
+#include"renderData.hpp" 
 
 // For parsing .osm Files into a data structure for successfull rendering
 void parseOSM(const std::string& filename);
+
+// TODO: For now, only secondary road's path is build, add other roads with proper handling for each case.
+void BuildTraversalPath(); // Building all Traversal Paths
