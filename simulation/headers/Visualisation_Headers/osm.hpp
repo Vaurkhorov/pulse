@@ -11,9 +11,14 @@
 #include <string>
 #include <osmium/io/any_input.hpp>
 #include <osmium/visitor.hpp>
+#include <set>
+#include <stack>
 #include "helpingFunctions.hpp"
 #include"roadStructure.hpp" 
-#include"renderData.hpp"
+#include"renderData.hpp" 
 
 // For parsing .osm Files into a data structure for successfull rendering
 void parseOSM(const std::string& filename);
+
+// TODO: For now, only secondary road's path is build, add other roads with proper handling for each case.
+void BuildTraversalPath(); // Building all Traversal Paths
