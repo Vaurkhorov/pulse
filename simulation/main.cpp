@@ -1,4 +1,4 @@
-﻿// win32_fix.hpp
+// win32_fix.hpp
 #pragma once
 
 #ifdef _WIN32
@@ -49,13 +49,9 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cmath> 
+
 #include<glm/gtc/matrix_inverse.hpp>
 #include <random>
-#include <map>
-#include <vector>
-#include <set>
-#include <stack>
-#include <cmath>
 
 // The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
@@ -163,6 +159,7 @@ int main() {
     setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
+    setupLaneBuffer();
 
     // Initialize moving dot path: disabled for now, in used for only 1 
     // InitMovingDotPath();: disabled for now, in used for only 1 dot
@@ -195,6 +192,7 @@ int main() {
 
         drawGround(ourShader);
         drawRoads(ourShader, roadColors);
+        drawLanes(ourShader, roadColors);
         drawBuildings(ourShader);
 
         // Draw the moving dot              : disabled for now, in used for only 1 dot
