@@ -111,6 +111,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>glad.lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -135,8 +136,8 @@
     <ClCompile Include="server\linux-server\src\call_cuda_code.cpp" />
     <ClCompile Include="server\windows-client\src\client.cpp" />
     <ClCompile Include="server\windows-client\src\serialization.cpp" />
+    <ClCompile Include="src\Simulation_Core\idm.cpp" />
     <ClCompile Include="src\Visualization_Core\HelphinFunctions.cpp" />
-    <ClCompile Include="src\glad.c" />
     <ClCompile Include="src\types.cpp" />
     <ClCompile Include="src\utils\Extras.cpp" />
     <ClCompile Include="src\utils\Input.cpp" />
@@ -146,6 +147,7 @@
     <ClCompile Include="src\Visualization_Core\Structures.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="headers\CUDA_SimulationHeaders\idm.hpp" />
     <ClInclude Include="headers\Visualisation_Headers\camera.hpp" />
     <ClInclude Include="headers\CUDA_LinuxHeader.hpp" />
     <ClInclude Include="headers\Visualisation_Headers\editor.hpp" />

@@ -1,4 +1,38 @@
-﻿
+﻿// win32_fix.hpp
+#pragma once
+
+#ifdef _WIN32
+
+  // 1) Prevent Windows <windef.h> from defining min/max macros
+#ifndef NOMINMAX
+#  define NOMINMAX
+#endif
+
+// 2) Suppress MSVC deprecation-as-error for old POSIX names
+#ifndef _CRT_SECURE_NO_WARNINGS
+#  define _CRT_SECURE_NO_WARNINGS
+#endif
+#ifndef _CRT_NONSTDC_NO_DEPRECATE
+#  define _CRT_NONSTDC_NO_DEPRECATE
+#endif
+
+// 3) Remap the POSIX I/O calls to MSVC-safe names
+#include <io.h>    // for _open, _write, etc.
+#define open   _open
+#define write  _write
+#define close  _close
+#define fdopen _fdopen
+#define fileno _fileno
+
+// — Do **not** #define getenv here!  If you need getenv,
+//    either use the standard getenv (no remap) or call _dupenv_s
+//    from a small inline wrapper function.
+
+#endif
+
+#include <osmium/io/any_input.hpp>
+#include <osmium/handler.hpp>
+#include <osmium/visitor.hpp>
 #include "../../headers/ServerHeaders/server.hpp"
 #include "../../headers/Visualisation_Headers/editor.hpp"
 #include "../../headers/Visualisation_Headers/roadStructure.hpp"
@@ -9,23 +43,26 @@
 #include "../../headers/Visualisation_Headers/Inputs.hpp"
 #include "../../headers/Visualisation_Headers/camera.hpp"
 #include "../../headers/Visualisation_Headers/shaders.hpp"
+#include "../../headers/CUDA_SimulationHeaders/idm.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cmath> 
 #include<glm/gtc/matrix_inverse.hpp>
+#include <random>
+#include <map>
+#include <vector>
+#include <set>
+#include <stack>
+#include <cmath>
 
 // The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
 float minZ = -2500.0f, maxZ = 3500.0f;
 
 // The approax center of my map
-glm::vec3 sceneCenter(
-    (minX + maxX) * 0.5f,    
-    0.0f,
-    (minZ + maxZ) * 0.5f    
-);
+glm::vec3 sceneCenter((minX + maxX) * 0.5f, 0.0f, (minZ + maxZ) * 0.5f);
 
 // TODO: Change the "z" value for contoling the init position of the camera's zooml
 // The offset value I am moving my camera to
@@ -41,11 +78,8 @@ glm::vec3 dir = glm::normalize(target - camPos);
 float yaw = glm::degrees(atan2(dir.z, dir.x));  // should be ~ -90°
 float pitch = glm::degrees(asin(dir.y));          // ~ -10°
 
-Camera camera(
-    camPos,
-    glm::vec3(0, 1, 0),
-    yaw,                      // ~-90°
-    pitch                     // ~-10°
+Camera camera(camPos, glm::vec3(0, 1, 0), yaw, // ~-90°
+    pitch // ~-10°
 );
 
 // settings
@@ -66,7 +100,7 @@ int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
@@ -102,25 +136,25 @@ int main() {
     std::unique_ptr<Client_Server> clientServer;
     bool isLoading = false;
     try {
-        clientServer = std::make_unique<Client_Server>("192.168.31.195", 12345); // TODO: change the IP, before running the program, to the server's ip
+        clientServer = std::make_unique<Client_Server>("192.168.31.195", 12345); // TODO: change the IP , before running the program, to the server's ip
     }
     catch (std::exception& e) {
         std::cerr << "ClientServer init failed: " << e.what() << std::endl;
     }
 
-    // road colors
     static const std::map<std::string, glm::vec3> roadColors = {
-        {"motorway",     {0.8f,0.4f,0.0f}},
-        {"trunk",        {0.9f,0.6f,0.0f}},
-        {"primary",      {1.0f,0.8f,0.0f}},
-        {"secondary",    {1.0f,1.0f,0.0f}},
-        {"tertiary",     {0.9f,0.9f,0.5f}},
-        {"residential",  {0.8f,0.8f,0.8f}},
-        {"service",      {0.7f,0.7f,0.7f}},
-        {"unclassified", {0.7f,0.7f,0.7f}},
-        {"other",        {0.6f,0.6f,0.6f}}
+        {"motorway",     {0.0f,0.4f,0.0f}},
+        {"trunk",        {0.0f,0.4f,0.0f}},
+        {"primary",      {0.0f,0.4f,0.0f}},
+        {"secondary",    {0.6f,0.0f,0.0f}},
+        {"tertiary",     {0.0f,0.4f,0.0f}},
+        {"residential",  {0.0f,0.4f,0.0f}},
+        {"service",      {0.0f,0.4f,0.0f}},
+        {"unclassified", {0.0f,0.4f,0.0f}},
+        {"other",        {0.0f,0.4f,0.0f}}
     };
 
+    // TODO: CHange to your own Path
     Shader ourShader("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.vert",
         "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.frag");
     
@@ -129,6 +163,11 @@ int main() {
     setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
+
+    // Initialize moving dot path: disabled for now, in used for only 1 
+    // InitMovingDotPath();: disabled for now, in used for only 1 dot
+    BuildTraversalPath();
+    InitDotsOnPath(traversalPath);
 
     // Initializing Imgui
     InitializeImGui(window);
@@ -143,6 +182,10 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // Update moving dot: disabled for now, in used for only 1 
+        //UpdateMovingDot(deltaTime);: disabled for now, in used for only 1 dot
+        UpdateAllDotsIDM(traversalPath, deltaTime);
+
         ourShader.use();
         ourShader.setMat4("model", glm::mat4(1.0f));
         // THe 8000 is the length/plane that will be rendered from my camera.
@@ -153,6 +196,10 @@ int main() {
         drawGround(ourShader);
         drawRoads(ourShader, roadColors);
         drawBuildings(ourShader);
+
+        // Draw the moving dot              : disabled for now, in used for only 1 dot
+        //DrawMovingDot(ourShader);         : disabled for now, in used for only 1 dot  
+        DrawAllDots(ourShader);
 
         // Currnelty the below functions are giving runtime errors(mostly null pointer error)
         // Handle map interaction 
