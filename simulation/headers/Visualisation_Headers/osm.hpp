@@ -13,6 +13,7 @@
 #include <osmium/visitor.hpp>
 #include <set>
 #include <stack>
+#include <unordered_map>
 #include "helpingFunctions.hpp"
 #include"roadStructure.hpp" 
 #include"renderData.hpp" 
