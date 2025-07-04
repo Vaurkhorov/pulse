@@ -1,84 +1,173 @@
-#include"../../headers/CUDA_SimulationHeaders/idm.hpp"
+#include "../../headers/CUDA_SimulationHeaders/idm.hpp"
+#include <vector>
+#include <queue>
+#include <algorithm>
+#include <glm/glm.hpp>
+#include "../../headers/Visualisation_Headers/roadStructure.hpp"
 
-// Numebr of Dots to us
-const int NUM_DOTS = 30;
+// Global dots container
 std::vector<Dot> dots;
 
-void InitDotsOnPath(const std::vector<glm::vec3>& path) {
-    dots.clear();
-    if (path.size() < 2) return;
+// Helper: Find a path in the lane graph from start to end using BFS (for demo)
+std::vector<glm::vec3> FindPathBFS(
+    const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lanegraph,
+    const glm::vec3& start,
+    const glm::vec3& goal)
+{
+    std::map<glm::vec3, glm::vec3, Vec3Less> parent;
+    std::queue<glm::vec3> q;
+    q.push(start);
+    parent[start] = start;
 
-    // Compute segment lengths and total path length
-    std::vector<float> segLengths;
-    float totalLen = 0.0f;
-    for (size_t i = 0; i + 1 < path.size(); ++i) {
-        float len = glm::length(path[i + 1] - path[i]);
-        segLengths.push_back(len);
-        totalLen += len;
-    }
-
-    // Place dots with at least s0 gap between them, starting from the beginning
-    float minGap = s0 + 2.0f; // add a little extra to avoid overlap
-    float s = 0.0f;
-    for (int i = 0; i < NUM_DOTS && s < totalLen; ++i) {
-        // Find segment for this s
-        size_t seg = 0;
-        float accLen = 0.0f;
-        while (seg < segLengths.size() && accLen + segLengths[seg] < s) {
-            accLen += segLengths[seg];
-            ++seg;
-        }
-        if (seg >= segLengths.size()) break;
-        float t = (s - accLen) / (segLengths[seg] > 0.0f ? segLengths[seg] : 1.0f);
-        glm::vec3 pos = glm::mix(path[seg], path[seg + 1], t);
-        dots.push_back({ s, v0, t, seg, pos, true });
-        s += minGap;
-    }
-}
-
-void UpdateDotIDM(Dot& dot, const Dot* leader, const std::vector<glm::vec3>& path, float deltaTime) {
-    if (!dot.active) return;
-    float s_leader = leader ? leader->s : std::numeric_limits<float>::max(); // FLT_MAX, just like INT_MAX OR the postion of the leader/car
-    float v_leader = leader ? leader->v : v0; // Velocity of the leader/car
-    float gap = s_leader - dot.s - s0; // the gap between the next and the curr calculation
-    if (gap < 0.1f) gap = 0.1f; // making sure, the gap doesnot go below the 0.1f otherwise they will overlap
-
-    float s_star = s0 + dot.v * T + dot.v * (dot.v - v_leader) / (2.0f * std::sqrt(a_max * b)); // TODO:wtf
-    float acc = a_max * (1.0f - std::pow(dot.v / v0, delta) - std::pow(s_star / gap, 2.0f));
-    dot.v += acc * deltaTime;
-    if (dot.v < 0.0f) dot.v = 0.0f;
-
-    // The IDM implementation starts:
-
-    float moveDist = dot.v * deltaTime; // curr_speed*time=distance
-    while (moveDist > 0.0f && dot.segment < path.size() - 1) {
-        glm::vec3 a = path[dot.segment];
-        glm::vec3 b = path[dot.segment + 1];
-        float segLen = glm::length(b - a);
-        float segRemain = segLen * (1.0f - dot.t);
-        if (moveDist < segRemain) {
-            dot.t += moveDist / segLen;
-            dot.position = glm::mix(a, b, dot.t);
-            dot.s += moveDist;
-            moveDist = 0.0f;
-        }
-        else {
-            moveDist -= segRemain;
-            dot.segment++;
-            dot.t = 0.0f;
-            dot.position = b;
-            dot.s += segRemain;
-            if (dot.segment >= path.size() - 1) {
-                dot.active = false;
-                break;
+    while (!q.empty()) {
+        glm::vec3 current = q.front();
+        q.pop();
+        if (current == goal) break;
+        auto it = lanegraph.find(current);
+        if (it == lanegraph.end()) continue;
+        for (const auto& neighbor : it->second) {
+            if (parent.find(neighbor) == parent.end()) {
+                parent[neighbor] = current;
+                q.push(neighbor);
             }
         }
     }
+
+    std::vector<glm::vec3> path;
+    if (parent.find(goal) == parent.end()) return path;
+    for (glm::vec3 v = goal; v != start; v = parent[v])
+        path.push_back(v);
+    path.push_back(start);
+    std::reverse(path.begin(), path.end());
+    return path;
 }
 
-void UpdateAllDotsIDM(const std::vector<glm::vec3>& path, float deltaTime) {
-    for (int i = 0; i < NUM_DOTS; ++i) {
-        Dot* leader = (i == 0) ? nullptr : &dots[i - 1];
-        UpdateDotIDM(dots[i], leader, path, deltaTime);
+
+// Helper: Compute length of a path
+float PathLength(const std::vector<glm::vec3>& path) {
+    float len = 0.0f;
+    for (size_t i = 1; i < path.size(); ++i)
+        len += glm::distance(path[i - 1], path[i]);
+    return len;
+}
+
+// Initialize dots along a path in the lane graph
+void InitDotsOnPath(const LaneGraph& lanegraph) {
+    dots.clear();
+
+    if (lanegraph.empty()) {
+        std::cerr << "[InitDotsOnPath] Lane graph is empty." << std::endl;
+        return;
+    }
+    auto start = lanegraph.begin()->first;
+    auto end = lanegraph.rbegin()->first;
+
+    std::vector<glm::vec3> path = FindPathBFS(lanegraph, start, end);
+    if (path.size() < 2) {
+        std::cerr << "[InitDotsOnPath] No valid path found in lane graph." << std::endl;
+        return;
+    }
+
+    float totalLen = PathLength(path);
+    float minGap = s0 + 2.0f;
+    int numDots = static_cast<int>(totalLen / minGap);
+
+    if (numDots < 1) {
+        std::cerr << "[InitDotsOnPath] Path too short for any dots." << std::endl;
+        return;
+    }
+
+    float s = 0.0f;
+    size_t seg = 0;
+    float segLen = glm::distance(path[0], path[1]);
+    for (int i = 0; i < numDots; ++i) {
+        float targetS = i * minGap;
+        while (seg + 1 < path.size() && s + segLen < targetS) {
+            s += segLen;
+            ++seg;
+            if (seg + 1 < path.size())
+                segLen = glm::distance(path[seg], path[seg + 1]);
+        }
+        if (seg + 1 >= path.size()) break; // Prevent out-of-bounds
+        float t = (targetS - s) / segLen;
+        glm::vec3 pos = glm::mix(path[seg], path[seg + 1], t);
+        dots.push_back({ targetS, 0.0f, t, seg, pos, true });
     }
 }
+
+
+// IDM update for a single dot
+void UpdateDotIDM(
+    Dot& dot,
+    const Dot* leader,
+    const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lanegraph,
+    float deltaTime)
+{
+    // Simple path-following: advance along the path
+    if (!dot.active) return;
+
+    // Find the path again (for demo, in practice, store per-dot path)
+    auto start = lanegraph.begin()->first;
+    auto end = lanegraph.rbegin()->first;
+    std::vector<glm::vec3> path = FindPathBFS(lanegraph, start, end);
+    if (path.size() < 2) {
+        dot.active = false;
+        return;
+    }
+
+    // Compute leader gap
+    float s_leader = leader ? leader->s : std::numeric_limits<float>::max();
+    float gap = s_leader - dot.s - s0;
+    if (gap < 0.1f) gap = 0.1f;
+
+    // IDM acceleration
+    float v = dot.v;
+    float delta_v = leader ? v - leader->v : 0.0f;
+    float s_star = s0 + std::max(0.0f, v * T + v * delta_v / (2.0f * sqrt(a_max * b)));
+    float acc = a_max * (1.0f - pow(v / v0, delta) - pow(s_star / gap, 2.0f));
+
+    // Integrate velocity and position
+    v += acc * deltaTime;
+    if (v < 0.0f) v = 0.0f;
+    dot.v = v;
+    dot.s += v * deltaTime;
+
+    // Move along the path
+    float s = 0.0f;
+    size_t seg = 0;
+    float segLen = glm::distance(path[0], path[1]);
+    while (seg + 1 < path.size() && s + segLen < dot.s) {
+        s += segLen;
+        ++seg;
+        if (seg + 1 < path.size())
+            segLen = glm::distance(path[seg], path[seg + 1]);
+    }
+    if (seg + 1 >= path.size()) {
+        dot.active = false;
+        return;
+    }
+    float t = (dot.s - s) / segLen;
+    dot.segment = seg;
+    dot.t = t;
+    dot.position = glm::mix(path[seg], path[seg + 1], t);
+}
+
+// Update all dots
+void UpdateAllDotsIDM(const LaneGraph& lanegraph, float deltaTime) {
+    if (dots.empty()) {
+        // Optionally print: 
+        std::cerr << "[UpdateAllDotsIDM] No dots to update." << std::endl;
+        return;
+    }
+    for (size_t i = 0; i < dots.size(); ++i) {
+        Dot* leader = nullptr;
+        for (size_t j = i + 1; j < dots.size(); ++j) {
+            if (dots[j].active) {
+                leader = &dots[j];
+                break;
+            }
+        }
+        UpdateDotIDM(dots[i], leader, lanegraph, deltaTime);
+    }
+}
+

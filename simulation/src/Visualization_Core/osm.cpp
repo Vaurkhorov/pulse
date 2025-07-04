@@ -8,47 +8,51 @@ std::vector<glm::vec3> traversalPath;
 std::vector<RenderData> buildingRenderData;
 std::map<std::string, RenderData> roadRenderData;
 LaneCell* d_laneCells = nullptr;
+// In main.cpp or osm.cpp (but only one .cpp file!)
+LaneGraph lane0_graph;
+LaneGraph lane1_graph;
 
 
-void BuildTraversalPath() {
-    traversalPath.clear();
 
-    // 1. Build the graph
-    std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less> graph; // our main graph with the operator for comparison as Vec3Less.
-    auto it = roadsByType.find("secondary");
-    if (it == roadsByType.end()) return;
-    const std::vector<RoadSegment>& segments = it->second; // getting the Road Segment vector for the "secondary" category
-    for (const RoadSegment& seg : segments) {
-        if (seg.vertices.size() < 2) continue;
-        for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
-            const glm::vec3& a = seg.vertices[i];
-            const glm::vec3& b = seg.vertices[i + 1];
-            graph[a].push_back(b);
-            graph[b].push_back(a);
-        }
-    }
-    if (graph.empty()) return;
 
-    // 2. Find a starting point (arbitrary: first key)
-    glm::vec3 start = graph.begin()->first;
+void BuildLaneLevelGraphs(LaneGraph& lane0_graph, LaneGraph& lane1_graph) {
+	lane0_graph.clear();
+	lane1_graph.clear();
 
-    // 3. DFS traversal to build a path
-    std::set<glm::vec3, Vec3Less> visited;
-    std::stack<glm::vec3> stack;
-    stack.push(start);
+	for (const auto& kv : roadsByType) {
+		for (const RoadSegment& seg : kv.second) {
+			// Use at least 1 lane if not specified
+			int lanes = seg.lanes > 0 ? seg.lanes : 1;
+			// If only one lane, add to both graphs
+			if (lanes < 2) {
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane0_graph[a].push_back(b);
+					lane0_graph[b].push_back(a);
+					lane1_graph[a].push_back(b);
+					lane1_graph[b].push_back(a);
+				}
+			}
+			else {
+				// For two lanes, treat both as separate graphs (using same geometry)
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane0_graph[a].push_back(b);
+					lane0_graph[b].push_back(a);
+				}
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane1_graph[a].push_back(b);
+					lane1_graph[b].push_back(a);
+				}
+			}
+		}
+	}
+}
 
-    while (!stack.empty()) {
-        glm::vec3 current = stack.top();
-        stack.pop();
-        if (visited.count(current)) continue;
-        visited.insert(current);
-        traversalPath.push_back(current);
-        for (const glm::vec3& neighbor : graph[current]) {
-            if (!visited.count(neighbor)) {
-                stack.push(neighbor);
-            }
-        }
-    }
   
   void parseOSM(const std::string& filename) {
 

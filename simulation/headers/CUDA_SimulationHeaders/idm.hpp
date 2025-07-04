@@ -12,10 +12,10 @@ const float s0 = 2.0f;       // minimum gap (units)
 const float delta = 4.0f;    // acceleration exponent
 
 // initializes a collection of dots along the path "traversalPath" which I made in the "BuildTraversalPath" function, ensuring a minimum gap between the dots based on the total length of the path segments.
-void InitDotsOnPath(const std::vector<glm::vec3>& path);
+void InitDotsOnPath(const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less> &lanegraph);
 
 // Updating the "dots"->"cars" usng the cocepts of IDM. This function only simulates 1 vehicle
-void UpdateDotIDM(Dot& dot, const Dot* leader, const std::vector<glm::vec3>& path, float deltaTime);
+void UpdateDotIDM(Dot& dot, const Dot* leader, const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lanegraph, float deltaTime);
 
 // This function calls the above funciton so that all cars can run accordingly/sequential
-void UpdateAllDotsIDM(const std::vector<glm::vec3>& path, float deltaTime);
+void UpdateAllDotsIDM(const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lanegraph, float deltaTime);

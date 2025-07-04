@@ -1,13 +1,15 @@
 #pragma once
 
-#include<vector>
-#include"renderData.hpp"
-#include "osm.hpp"
-#include<string>
-//#include <GLFW/glfw3.h>
-#include<glad/glad.h>
-#include<map>
-#include<glm/glm.hpp>
+#include <vector>
+#include <string>
+#include <map>
+#include <glm/glm.hpp>
+#include <glad/glad.h>
+#include "renderData.hpp"
+#include <osmium/osm/types.hpp>
+
+
+
 
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
@@ -83,6 +85,13 @@ struct Vec3Less {
         return a.z < b.z;
     }
 };
+
+
+// LaneGraph type alias for convenience
+using LaneGraph = std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>;
+extern LaneGraph lane0_graph;
+extern LaneGraph lane1_graph;
+
 
 // represents a point along a path with attributes for position, speed, interpolation, segment index, 3D coordinates, and active status
 struct Dot {

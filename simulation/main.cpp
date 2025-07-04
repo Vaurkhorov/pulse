@@ -1,9 +1,8 @@
-// win32_fix.hpp
 #pragma once
 
 #ifdef _WIN32
 
-  // 1) Prevent Windows <windef.h> from defining min/max macros
+// 1) Prevent Windows <windef.h> from defining min/max macros
 #ifndef NOMINMAX
 #  define NOMINMAX
 #endif
@@ -15,14 +14,6 @@
 #ifndef _CRT_NONSTDC_NO_DEPRECATE
 #  define _CRT_NONSTDC_NO_DEPRECATE
 #endif
-
-// 3) Remap the POSIX I/O calls to MSVC-safe names
-#include <io.h>    // for _open, _write, etc.
-#define open   _open
-#define write  _write
-#define close  _close
-#define fdopen _fdopen
-#define fileno _fileno
 
 // — Do **not** #define getenv here!  If you need getenv,
 //    either use the standard getenv (no remap) or call _dupenv_s
@@ -52,6 +43,7 @@
 
 #include<glm/gtc/matrix_inverse.hpp>
 #include <random>
+
 
 // The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
@@ -151,11 +143,11 @@ int main() {
     };
 
     // TODO: CHange to your own Path
-    Shader ourShader("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.vert",
-        "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\main.frag");
+    Shader ourShader("C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\assets\\shaders\\main.vert",
+        "C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\assets\\shaders\\main.frag");
     
     // load map
-    parseOSM("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\src\\map.osm");
+    parseOSM("C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\src\\map.osm");
     setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
@@ -163,11 +155,22 @@ int main() {
 
     // Initialize moving dot path: disabled for now, in used for only 1 
     // InitMovingDotPath();: disabled for now, in used for only 1 dot
-    BuildTraversalPath();
-    InitDotsOnPath(traversalPath);
+    //BuildTraversalPath();
+  //  LaneGraph lane0_graph, lane1_graph;
+    BuildLaneLevelGraphs(lane0_graph, lane1_graph);
+    // Now you have two separate lane-level graphs
+
+    //InitDotsOnPath(traversalPath);
+    InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
+    
+	// or UpdateAllDotsIDM(lane1_graph, deltaTime); if you want to use the other lane graph
+  //  InitDotsOnPath(lane1_graph); // or lane1_graph, as appropriate   
+
 
     // Initializing Imgui
     InitializeImGui(window);
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f); // Dark gray
+
 
     // main loop
     while (!glfwWindowShouldClose(window)) {
@@ -175,14 +178,22 @@ int main() {
         deltaTime = current - lastFrame;
         lastFrame = current;
 
+        std::cout << "lane0_graph size: " << lane0_graph.size() << std::endl;
+        std::cout << "lane1_graph size : " << lane1_graph.size() << std::endl;
+        std::cout << std::flush;
         Input::keyboardInput(window, camera, deltaTime);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //if (rd.vertexCount == 0) continue;
+       // glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(rd.vertexCount));
+
 
         // Update moving dot: disabled for now, in used for only 1 
-        //UpdateMovingDot(deltaTime);: disabled for now, in used for only 1 dot
-        UpdateAllDotsIDM(traversalPath, deltaTime);
-
+        // UpdateMovingDot(deltaTime);: disabled for now, in used for only 1 dot
+        
+        //UpdateAllDotsIDM(traversalPath, deltaTime);
+        UpdateAllDotsIDM(lane0_graph, deltaTime);
+        //UpdateAllDotsIDM(lane1_graph, deltaTime);
         ourShader.use();
         ourShader.setMat4("model", glm::mat4(1.0f));
         // THe 8000 is the length/plane that will be rendered from my camera.
