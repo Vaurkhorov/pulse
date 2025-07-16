@@ -7,6 +7,7 @@
 
 // Global dots container
 std::vector<Dot> dots;
+//std::vector<glm::vec3> traversalPath;
 
 // Helper: Find a path in the lane graph from start to end using BFS (for demo)
 std::vector<glm::vec3> FindPathBFS(
@@ -14,6 +15,7 @@ std::vector<glm::vec3> FindPathBFS(
     const glm::vec3& start,
     const glm::vec3& goal)
 {
+    std::cout << "[FindPathBFS] Called with start and goal." << std::endl;
     std::map<glm::vec3, glm::vec3, Vec3Less> parent;
     std::queue<glm::vec3> q;
     q.push(start);
@@ -62,14 +64,16 @@ void InitDotsOnPath(const LaneGraph& lanegraph) {
     auto start = lanegraph.begin()->first;
     auto end = lanegraph.rbegin()->first;
 
-    std::vector<glm::vec3> path = FindPathBFS(lanegraph, start, end);
+    traversalPath = FindPathBFS(lanegraph, start, end); // Store path globally
+    const std::vector<glm::vec3>& path = traversalPath;
+
     if (path.size() < 2) {
         std::cerr << "[InitDotsOnPath] No valid path found in lane graph." << std::endl;
         return;
     }
 
     float totalLen = PathLength(path);
-    float minGap = s0 + 2.0f;
+    float minGap = s0 + 400.0f;
     int numDots = static_cast<int>(totalLen / minGap);
 
     if (numDots < 1) {
@@ -96,21 +100,18 @@ void InitDotsOnPath(const LaneGraph& lanegraph) {
 }
 
 
+
 // IDM update for a single dot
 void UpdateDotIDM(
     Dot& dot,
     const Dot* leader,
-    const std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lanegraph,
     float deltaTime)
 {
-    // Simple path-following: advance along the path
     if (!dot.active) return;
 
-    // Find the path again (for demo, in practice, store per-dot path)
-    auto start = lanegraph.begin()->first;
-    auto end = lanegraph.rbegin()->first;
-    std::vector<glm::vec3> path = FindPathBFS(lanegraph, start, end);
+    const std::vector<glm::vec3>& path = traversalPath;
     if (path.size() < 2) {
+        std::cerr << "[UpdateDotIDM] Path too short for dot, deactivating." << std::endl;
         dot.active = false;
         return;
     }
@@ -152,10 +153,10 @@ void UpdateDotIDM(
     dot.position = glm::mix(path[seg], path[seg + 1], t);
 }
 
+
 // Update all dots
-void UpdateAllDotsIDM(const LaneGraph& lanegraph, float deltaTime) {
+void UpdateAllDotsIDM(float deltaTime) {
     if (dots.empty()) {
-        // Optionally print: 
         std::cerr << "[UpdateAllDotsIDM] No dots to update." << std::endl;
         return;
     }
@@ -167,7 +168,8 @@ void UpdateAllDotsIDM(const LaneGraph& lanegraph, float deltaTime) {
                 break;
             }
         }
-        UpdateDotIDM(dots[i], leader, lanegraph, deltaTime);
+        UpdateDotIDM(dots[i], leader, deltaTime);
     }
 }
+
 

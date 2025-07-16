@@ -13,18 +13,18 @@ LaneGraph lane0_graph;
 LaneGraph lane1_graph;
 
 
-
-
-void BuildLaneLevelGraphs(LaneGraph& lane0_graph, LaneGraph& lane1_graph) {
+void BuildLaneLevelGraphs(
+	std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane0_graph,
+	std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane1_graph
+) {
 	lane0_graph.clear();
 	lane1_graph.clear();
 
 	for (const auto& kv : roadsByType) {
 		for (const RoadSegment& seg : kv.second) {
-			// Use at least 1 lane if not specified
 			int lanes = seg.lanes > 0 ? seg.lanes : 1;
-			// If only one lane, add to both graphs
 			if (lanes < 2) {
+				// Add to both graphs if only one lane
 				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
 					const glm::vec3& a = seg.vertices[i];
 					const glm::vec3& b = seg.vertices[i + 1];
@@ -35,7 +35,7 @@ void BuildLaneLevelGraphs(LaneGraph& lane0_graph, LaneGraph& lane1_graph) {
 				}
 			}
 			else {
-				// For two lanes, treat both as separate graphs (using same geometry)
+				// Add to each lane graph separately
 				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
 					const glm::vec3& a = seg.vertices[i];
 					const glm::vec3& b = seg.vertices[i + 1];
@@ -52,6 +52,7 @@ void BuildLaneLevelGraphs(LaneGraph& lane0_graph, LaneGraph& lane1_graph) {
 		}
 	}
 }
+
 
   
   void parseOSM(const std::string& filename) {

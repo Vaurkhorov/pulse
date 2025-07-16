@@ -170,7 +170,7 @@ void drawRoads(Shader& shader, const std::map<std::string, glm::vec3>& roadColor
 
 void drawGround(Shader& shader) {
 	glBindVertexArray(groundRenderData.VAO);
-	shader.setVec3("color", glm::vec3(1.0f, 0.1f, 0.0f));
+	shader.setVec3("color", glm::vec3(0.1f, 0.1f, 0.1f));
 
 	glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(groundRenderData.vertexCount)); // TODO: wtf is Triangle Fan?
 }
