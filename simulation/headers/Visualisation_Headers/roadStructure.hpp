@@ -10,6 +10,8 @@
 
 
 
+// In a shared header (e.g., roadStructure.hpp)
+extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
@@ -101,6 +103,7 @@ struct Dot {
     size_t segment; // current segment index
     glm::vec3 position;
     bool active;
+	size_t pathIndex;
 };
 
 extern std::vector<Dot> dots;

@@ -35,16 +35,31 @@
 #include "../../headers/Visualisation_Headers/camera.hpp"
 #include "../../headers/Visualisation_Headers/shaders.hpp"
 #include "../../headers/CUDA_SimulationHeaders/idm.hpp"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cmath> 
-
+#include <random>
+#include <algorithm>
 #include<glm/gtc/matrix_inverse.hpp>
 #include <random>
+#include <numeric>
+std::vector<glm::vec3> SelectRandomOrigins(const LaneGraph& laneGraph, size_t numOrigins) {
+    std::vector<glm::vec3> keys;
+    for (const auto& kv : laneGraph) {
+        keys.push_back(kv.first);
+    }
+    if (keys.empty() || numOrigins == 0) return {};
 
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(keys.begin(), keys.end(), gen);
 
+    if (numOrigins > keys.size()) numOrigins = keys.size();
+    return std::vector<glm::vec3>(keys.begin(), keys.begin() + numOrigins);
+}
 // The approx hardcoded min and max values in my map
 float minX = -3400.0f, maxX = 2300.0f;
 float minZ = -2500.0f, maxZ = 3500.0f;
@@ -161,7 +176,40 @@ int main() {
     // Now you have two separate lane-level graphs
 
     //InitDotsOnPath(traversalPath);
-    InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
+    //InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
+    // Example: 5 origins, 1 goal
+    //std::vector<glm::vec3> origins = { origin1, origin2, origin3, origin4, origin5 };
+    //glm::vec3 goal = ...; // pick a goal node
+
+    // Example: select 5 random origins from lane0_graph
+    size_t numOrigins = 5;
+    std::vector<glm::vec3> origins = SelectRandomOrigins(lane0_graph, numOrigins);
+
+    // Pick a random goal (different from origins)
+    glm::vec3 goal;
+    {
+        std::vector<glm::vec3> candidates;
+        for (const auto& kv : lane0_graph) {
+            const glm::vec3& pt = kv.first;
+            if (std::find(origins.begin(), origins.end(), pt) == origins.end())
+                candidates.push_back(pt);
+        }
+        if (!candidates.empty()) {
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+            goal = candidates[dist(gen)];
+        }
+        else {
+            if (!lane0_graph.empty()) {
+                goal = lane0_graph.rbegin()->first;
+            } // fallback
+        }
+    }
+
+    // Now initialize dots
+    InitDotsOnMultiplePaths(lane0_graph, origins, goal);
+
     
 	// or UpdateAllDotsIDM(lane1_graph, deltaTime); if you want to use the other lane graph
   //  InitDotsOnPath(lane1_graph); // or lane1_graph, as appropriate   
