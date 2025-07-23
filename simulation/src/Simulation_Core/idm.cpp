@@ -6,6 +6,8 @@
 #include "../../headers/Visualisation_Headers/roadStructure.hpp"
 #include <random>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 
 // Global dots container
 std::vector<Dot> dots;
@@ -94,63 +96,86 @@ void InitDotsOnMultiplePaths(const LaneGraph& lanegraph, const std::vector<glm::
 
 
 
-void UpdateDotIDM(
-    Dot& dot,
-    const Dot* leader,
-    float deltaTime)
+void UpdateDotIDM(Dot& dot, const Dot* leader, float deltaTime)
 {
-    if (!dot.active) return;
-
-    // Use the correct path for this dot
-    if (dot.pathIndex >= traversalPaths.size()) {
-        std::cerr << "[UpdateDotIDM] Invalid pathIndex for dot, deactivating." << std::endl;
-        dot.active = false;
-        return;
-    }
-    const std::vector<glm::vec3>& path = traversalPaths[dot.pathIndex];
-    if (path.size() < 2) {
-        std::cerr << "[UpdateDotIDM] Path too short for dot, deactivating." << std::endl;
-        dot.active = false;
+    if (!dot.active) {
         return;
     }
 
-    // Compute leader gap
+    // --- 1. Update vehicle's progress (s) along the centerline path ---
+    // This logic should already be in your existing function. It calculates the
+    // new 'dot.s' based on the IDM model. For completeness, it's included here.
     float s_leader = leader ? leader->s : std::numeric_limits<float>::max();
-    float gap = s_leader - dot.s - s0;
+    float gap = s_leader - dot.s - s0; // s0 is a constant from your IDM model
     if (gap < 0.1f) gap = 0.1f;
 
-    // IDM acceleration
     float v = dot.v;
     float delta_v = leader ? v - leader->v : 0.0f;
     float s_star = s0 + std::max(0.0f, v * T + v * delta_v / (2.0f * sqrt(a_max * b)));
     float acc = a_max * (1.0f - pow(v / v0, delta) - pow(s_star / gap, 2.0f));
 
-    // Integrate velocity and position
     v += acc * deltaTime;
     if (v < 0.0f) v = 0.0f;
     dot.v = v;
     dot.s += v * deltaTime;
 
-    // Move along the path
-    float s = 0.0f;
+
+    // --- 2. Find the vehicle's position on the centerline ---
+    const std::vector<glm::vec3>& path = traversalPaths[dot.pathIndex];
+    if (path.size() < 2) {
+        dot.active = false;
+        return;
+    }
+
+    float s_path = 0.0f;
     size_t seg = 0;
     float segLen = glm::distance(path[0], path[1]);
-    while (seg + 1 < path.size() && s + segLen < dot.s) {
-        s += segLen;
+    while (seg + 1 < path.size() && s_path + segLen < dot.s) {
+        s_path += segLen;
         ++seg;
         if (seg + 1 < path.size())
             segLen = glm::distance(path[seg], path[seg + 1]);
     }
-    if (seg + 1 >= path.size()) {
+
+    dot.segment = seg;
+    if (dot.segment + 1 >= path.size()) {
         dot.active = false;
         return;
     }
-    float t = (dot.s - s) / segLen;
-    dot.segment = seg;
-    dot.t = t;
-    dot.position = glm::mix(path[seg], path[seg + 1], t);
-}
 
+    float t = (dot.s - s_path) / segLen;
+    glm::vec3 centerPosition = glm::mix(path[seg], path[seg + 1], t);
+
+
+    // --- 3. Calculate the final position in a specific lane ---
+
+    // Define lane properties. You can adjust these.
+    const float LANE_WIDTH = 3.5f; // A standard lane width in meters
+    const int targetLane = 1;      // 1 for the first lane to the right, -1 for first to the left.
+
+    // Get the direction the car is heading
+    glm::vec3 direction = glm::normalize(path[dot.segment + 1] - centerPosition);
+
+    // Calculate the perpendicular "right" vector on the XZ plane
+    glm::vec3 rightVec = glm::normalize(glm::vec3(direction.z, 0.0f, -direction.x));
+
+    // Calculate the final offset position and update the dot's main position
+    dot.position = centerPosition + rightVec * (LANE_WIDTH * float(targetLane));
+
+
+    // --- 4. Build the final transformation matrix for rendering ---
+
+    // Calculate the rotation angle on the Y axis
+    float angle = atan2(direction.x, direction.z);
+
+    // Build the transformation matrix using the new, offset dot.position
+    glm::mat4 translation = glm::translate(glm::mat4(1.0f), dot.position);
+    glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // You can add a scale matrix here if your model is too big or small
+    // glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
+    dot.modelMatrix = translation * rotation; // * scale;
+}
 
 void UpdateAllDotsIDM(float deltaTime) {
     if (dots.empty()) return;

@@ -257,12 +257,12 @@ int main() {
     // Initialize moving dot path: disabled for now, in used for only 1 
     // InitMovingDotPath();: disabled for now, in used for only 1 dot
     //BuildTraversalPath();
-  //  LaneGraph lane0_graph, lane1_graph;
+  LaneGraph lane0_graph, lane1_graph;
     BuildLaneLevelGraphs(lane0_graph, lane1_graph);
     // Now you have two separate lane-level graphs
 
-    //InitDotsOnPath(traversalPath);
-    //InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
+   //InitDotsOnPath(traversalPath);
+   //InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
     // Example: 5 origins, 1 goal
     //std::vector<glm::vec3> origins = { origin1, origin2, origin3, origin4, origin5 };
     //glm::vec3 goal = ...; // pick a goal node

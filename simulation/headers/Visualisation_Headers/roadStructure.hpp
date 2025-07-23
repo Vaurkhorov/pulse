@@ -104,6 +104,7 @@ struct Dot {
     glm::vec3 position;
     bool active;
 	size_t pathIndex;
+	glm::mat4 modelMatrix = glm::mat4(1.0f);
 };
 
 extern std::vector<Dot> dots;
