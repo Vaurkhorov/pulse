@@ -1,37 +1,66 @@
 
-// Preprocessor definitions and includes
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#define _CRT_NONSTDC_NO_DEPRECATE
-#define _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_DEPRECATE
+#pragma once
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#ifdef _WIN32
+
+// 1) Prevent Windows <windef.h> from defining min/max macros
+#ifndef NOMINMAX
+#  define NOMINMAX
+#endif
+
+// 2) Suppress MSVC deprecation-as-error for old POSIX names
+#ifndef _CRT_SECURE_NO_WARNINGS
+#  define _CRT_SECURE_NO_WARNINGS
+#endif
+#ifndef _CRT_NONSTDC_NO_DEPRECATE
+#  define _CRT_NONSTDC_NO_DEPRECATE
+#endif
+
+// — Do **not** #define getenv here!  If you need getenv,
+//    either use the standard getenv (no remap) or call _dupenv_s
+//    from a small inline wrapper function.
+
+#endif
+
+#include <osmium/io/any_input.hpp>
+#include <osmium/handler.hpp>
+#include <osmium/visitor.hpp>
+#include "../../headers/ServerHeaders/server.hpp"
+#include "../../headers/Visualisation_Headers/editor.hpp"
+#include "../../headers/Visualisation_Headers/roadStructure.hpp"
+#include "../../headers/Visualisation_Headers/osm.hpp"
+#include "../../headers/Visualisation_Headers/renderData.hpp"
+#include "../../headers/Visualisation_Headers/helpingFunctions.hpp"
+#include "../../headers/Visualisation_Headers/imgui.hpp"
+#include "../../headers/Visualisation_Headers/Inputs.hpp"
+#include "../../headers/Visualisation_Headers/camera.hpp"
+#include "../../headers/Visualisation_Headers/shaders.hpp"
+#include "../../headers/CUDA_SimulationHeaders/idm.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <glm/gtc/matrix_inverse.hpp>
-
-#include <osmium/io/any_input.hpp>
-#include <osmium/visitor.hpp>
-#include <osmium/handler/node_locations_for_ways.hpp>
-#include <osmium/index/map/flex_mem.hpp>
-
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
-#include <vector>
-#include <iostream>
-#include <string>
 #include <algorithm>
-#include <cmath>
-#include <map>
-#include <cstdlib>
-#include <ctime>
-#include <limits>
+#include <cmath> 
+#include <random>
+#include <algorithm>
+#include<glm/gtc/matrix_inverse.hpp>
+#include <random>
+#include <numeric>
+std::vector<glm::vec3> SelectRandomOrigins(const LaneGraph& laneGraph, size_t numOrigins) {
+    std::vector<glm::vec3> keys;
+    for (const auto& kv : laneGraph) {
+        keys.push_back(kv.first);
+    }
+    if (keys.empty() || numOrigins == 0) return {};
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(keys.begin(), keys.end(), gen);
+
+    if (numOrigins > keys.size()) numOrigins = keys.size();
+    return std::vector<glm::vec3>(keys.begin(), keys.begin() + numOrigins);
+
 
 // Define M_PI if not defined
 #ifndef M_PI
@@ -94,192 +123,277 @@ float pitch = -45.0f;
 float lastX = 400, lastY = 300;
 bool firstMouse = true;
 
-// -------------------------------
-// OSM Parsing and Coordinate Conversion
-// -------------------------------
 
-// Convert latitude/longitude to Mercator (simplified)
-glm::vec2 latLonToMercator(double lat, double lon) {
-	const float R = 6378137.0f;
-	float x = static_cast<float>(lon * M_PI * R / 180.0);
-	float y = static_cast<float>(log(tan((90.0 + lat) * M_PI / 360.0)) * R);
-	return glm::vec2(x, y);
+
+// The approx hardcoded min and max values in my map
+float minX = -3400.0f, maxX = 2300.0f;
+float minZ = -2500.0f, maxZ = 3500.0f;
+
+// The approax center of my map
+glm::vec3 sceneCenter((minX + maxX) * 0.5f, 0.0f, (minZ + maxZ) * 0.5f);
+
+// TODO: Change the "z" value for contoling the init position of the camera's zooml
+// The offset value I am moving my camera to
+glm::vec3 camOffset(0.0f, 400.0f, 500.0f);
+
+// compute final position:
+glm::vec3 camPos = sceneCenter + camOffset;
+
+glm::vec3 target = sceneCenter;  // what we look at
+
+// derive direction, yaw, pitch
+glm::vec3 dir = glm::normalize(target - camPos);
+float yaw = glm::degrees(atan2(dir.z, dir.x));  // should be ~ -90°
+float pitch = glm::degrees(asin(dir.y));          // ~ -10°
+
+Camera camera(camPos, glm::vec3(0, 1, 0), yaw, // ~-90°
+    pitch // ~-10°
+);
+
+// settings
+static constexpr unsigned int SCR_WIDTH = 800; // constexpr fixes the value at compile time unlike const's runtime fixing
+static constexpr unsigned int SCR_HEIGHT = 600;
+
+float deltaTime = 0.0f, lastFrame = 0.0f;
+
+void static framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
 }
 
-// Road type categories for visualization
-const std::vector<std::string> roadHierarchy = {
-	"motorway", "trunk", "primary", "secondary", "tertiary",
-	"residential", "service", "unclassified", "other"
-};
+int main() {
+    // For debuging memory leaks
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
-std::string categorizeRoadType(const char* highway_value) {
-	if (!highway_value)
-		return "other";
-	std::string type = highway_value;
-	for (const auto& category : roadHierarchy) {
-		if (type.find(category) != std::string::npos) {
-			return category;
-		}
-	}
-	return "other";
+    // init GLFW
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+#ifdef __APPLE__
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
+
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "OSM Viewer", nullptr, nullptr);
+    if (!window) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+    glfwMakeContextCurrent(window); // ------  Do any work after this context --------
+
+    // input
+    Input::WindowData data{}; // instance of WindowData struct of the input class
+    Input input;
+    data.input = &input;
+    data.camera = &camera;
+
+    glfwSetWindowUserPointer(window, &data); // Setting pointers: to allow callback functions to retrieve pointers in order to access the associated Input::WindowData to input(keyboards) and camera objects
+
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, Input::mouse_callback);
+    glfwSetScrollCallback(window, Input::scroll_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    // load GLAD
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        std::cerr << "Failed to initialize GLAD" << std::endl;
+        return -1;
+    }
+
+    // client-server
+    std::unique_ptr<Client_Server> clientServer;
+    bool isLoading = false;
+    try {
+        clientServer = std::make_unique<Client_Server>("192.168.31.195", 12345); // TODO: change the IP , before running the program, to the server's ip
+    }
+    catch (std::exception& e) {
+        std::cerr << "ClientServer init failed: " << e.what() << std::endl;
+    }
+
+    static const std::map<std::string, glm::vec3> roadColors = {
+        {"motorway",     {0.0f,0.4f,0.0f}},
+        {"trunk",        {0.0f,0.4f,0.0f}},
+        {"primary",      {0.0f,0.4f,0.0f}},
+        {"secondary",    {0.6f,0.0f,0.0f}},
+        {"tertiary",     {0.0f,0.4f,0.0f}},
+        {"residential",  {0.0f,0.4f,0.0f}},
+        {"service",      {0.0f,0.4f,0.0f}},
+        {"unclassified", {0.0f,0.4f,0.0f}},
+        {"other",        {0.0f,0.4f,0.0f}}
+    };
+
+    // TODO: CHange to your own Path
+    Shader ourShader("C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\assets\\shaders\\main.vert",
+        "C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\assets\\shaders\\main.frag");
+    
+    // load map
+    parseOSM("C:\\Users\\91987\\source\\repos\\pulse1\\simulation\\src\\map.osm");
+    setupRoadBuffers();
+    setupBuildingBuffers();
+    setupGroundBuffer();
+    setupLaneBuffer();
+
+    // Initialize moving dot path: disabled for now, in used for only 1 
+    // InitMovingDotPath();: disabled for now, in used for only 1 dot
+    //BuildTraversalPath();
+  //  LaneGraph lane0_graph, lane1_graph;
+    BuildLaneLevelGraphs(lane0_graph, lane1_graph);
+    // Now you have two separate lane-level graphs
+
+    //InitDotsOnPath(traversalPath);
+    //InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
+    // Example: 5 origins, 1 goal
+    //std::vector<glm::vec3> origins = { origin1, origin2, origin3, origin4, origin5 };
+    //glm::vec3 goal = ...; // pick a goal node
+
+    // Example: select 5 random origins from lane0_graph
+    size_t numOrigins = 5;
+    std::vector<glm::vec3> origins = SelectRandomOrigins(lane0_graph, numOrigins);
+
+    // Pick a random goal (different from origins)
+    glm::vec3 goal;
+    {
+        std::vector<glm::vec3> candidates;
+        for (const auto& kv : lane0_graph) {
+            const glm::vec3& pt = kv.first;
+            if (std::find(origins.begin(), origins.end(), pt) == origins.end())
+                candidates.push_back(pt);
+        }
+        if (!candidates.empty()) {
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+            goal = candidates[dist(gen)];
+        }
+        else {
+            if (!lane0_graph.empty()) {
+                goal = lane0_graph.rbegin()->first;
+            } // fallback
+        }
+    }
+
+    // Now initialize dots
+    InitDotsOnMultiplePaths(lane0_graph, origins, goal);
+
+    
+	// or UpdateAllDotsIDM(lane1_graph, deltaTime); if you want to use the other lane graph
+  //  InitDotsOnPath(lane1_graph); // or lane1_graph, as appropriate   
+
+
+    // Initializing Imgui
+    InitializeImGui(window);
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f); // Dark gray
+
+
+    // main loop
+    while (!glfwWindowShouldClose(window)) {
+        try {
+            float current = static_cast<float>(glfwGetTime());
+            deltaTime = current - lastFrame;
+            lastFrame = current;
+
+            std::cout << "lane0_graph size: " << lane0_graph.size() << std::endl;
+            std::cout << "lane1_graph size : " << lane1_graph.size() << std::endl;
+            std::cout << std::flush;
+            Input::keyboardInput(window, camera, deltaTime);
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            //if (rd.vertexCount == 0) continue;
+           // glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(rd.vertexCount));
+
+
+            // Update moving dot: disabled for now, in used for only 1 
+            // UpdateMovingDot(deltaTime);: disabled for now, in used for only 1 dot
+
+            std::cout << "Checkpoint 0" << std::endl;
+            std::cout << dots.size() << std::endl;
+            std::cout << std::flush;
+
+            //UpdateAllDotsIDM(traversalPath, deltaTime);
+            UpdateAllDotsIDM(deltaTime);
+            //UpdateAllDotsIDM(lane1_graph, deltaTime);
+
+            std::cout << "Checkpoint 1" << std::endl;
+            std::cout << std::flush;
+
+            ourShader.use();
+            ourShader.setMat4("model", glm::mat4(1.0f));
+            // THe 8000 is the length/plane that will be rendered from my camera.
+            glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), float(SCR_WIDTH) / SCR_HEIGHT, 0.1f, 8000.f); // TODO: I've hardcoded 8000 for now, but we need to do calculations to make this thing dynamic so that later when new map is loaded, so that it adjusts automatically.
+            ourShader.setMat4("projection", proj);
+            ourShader.setMat4("view", camera.GetViewMatrix());
+
+            drawGround(ourShader);
+            drawRoads(ourShader, roadColors);
+            drawLanes(ourShader, roadColors);
+            drawBuildings(ourShader);
+
+
+            // Draw the moving dot              : disabled for now, in used for only 1 dot
+            //DrawMovingDot(ourShader);         : disabled for now, in used for only 1 dot  
+            DrawAllDots(ourShader);
+
+            // Currnelty the below functions are giving runtime errors(mostly null pointer error)
+            // Handle map interaction 
+            //ShowEditorWindow(&editorState.showDebugWindow); 
+            //HandleMapInteraction(camera, window);
+
+            std::cout << "Checkpoint 2" << std::endl;
+            std::cout << std::flush;
+
+            // For Server button
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ImGui::Begin("Control Panel");
+
+            if (isLoading) {
+                ImGui::Text("Loading...");
+            }
+            else if (clientServer) {
+                if (ImGui::Button("Click Me!")) {
+                    std::string send = "Hello";
+                    try {
+                        // TODO: Add a loading bar!!!
+                        // This call is blocking and hangs the application. so better have a loading spiner prerender to call at this point.
+                        std::string res = clientServer->RunCUDAcode(send, isLoading);
+                        std::cout << "Received: " << res << std::endl;
+                    }
+                    catch (const std::exception& e) {
+                        std::cerr << "Network error: " << e.what() << std::endl;
+                    }
+                }
+            }
+            else {
+                ImGui::Text("Networking unavailable");
+                // TODO: Implement this functionality this later
+                /*if (ImGui::Button("Retry Connection")) {
+                    initNetworking();
+                }*/
+            }
+            ImGui::End();
+            glDisable(GL_DEPTH_TEST);   // Important to disable for ImGui overlays
+            ImGui::Render(); // render call is neccessary
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            //glEnable(GL_DEPTH_TEST); // causing problem in rendering
+
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Exception in main loop: " << e.what() << std::endl;
+        }
+        catch (...)
+        {
+            std::cerr << "Unknown exception in main loop" << std::endl;
+        }
+    }
+    ShutdownImGui();
+    glfwTerminate();
+    return 0;
 }
 
-void parseOSM(const std::string& filename) {
-	osmium::io::File input_file{ filename };
-	osmium::io::Reader reader{ input_file, osmium::osm_entity_bits::node | osmium::osm_entity_bits::way };
-
-	osmium::index::map::FlexMem<osmium::unsigned_object_id_type, osmium::Location> index;
-	osmium::handler::NodeLocationsForWays<decltype(index)> location_handler{ index };
-
-	// Reference point (example coordinates)
-	double ref_lat = 30.732076;
-	double ref_lon = 76.772863;
-	glm::vec2 ref_point = latLonToMercator(ref_lat, ref_lon);
-
-	// Initialize road categories
-	for (const auto& category : roadHierarchy) {
-		roadsByType[category] = std::vector<RoadSegment>();
-	}
-
-	// First pass: index all nodes.
-	osmium::io::Reader reader_first_pass{ input_file, osmium::osm_entity_bits::node };
-	osmium::apply(reader_first_pass, location_handler);
-	reader_first_pass.close();
-
-	float min_x = std::numeric_limits<float>::max();
-	float max_x = std::numeric_limits<float>::lowest();
-	float min_z = std::numeric_limits<float>::max();
-	float max_z = std::numeric_limits<float>::lowest();
-
-	osmium::io::Reader reader_second_pass{ input_file, osmium::osm_entity_bits::way };
-	try {
-		while (osmium::memory::Buffer buffer = reader_second_pass.read()) {
-			for (const auto& entity : buffer) {
-				if (entity.type() == osmium::item_type::way) {
-					const osmium::Way& way = static_cast<const osmium::Way&>(entity);
-					const char* highway_value = way.tags().get_value_by_key("highway");
-					bool is_building = way.tags().get_value_by_key("building") != nullptr;
-
-					std::vector<glm::vec3> way_vertices;
-					for (const auto& node_ref : way.nodes()) {
-						try {
-							osmium::Location loc = location_handler.get_node_location(node_ref.ref());
-							if (!loc.valid()) continue;
-							double lat = loc.lat();
-							double lon = loc.lon();
-							glm::vec2 mercator = latLonToMercator(lat, lon);
-							float scale_factor = 0.001f;
-							float x = (mercator.x - ref_point.x) * scale_factor;
-							float z = (mercator.y - ref_point.y) * scale_factor;
-							min_x = std::min(min_x, x);
-							max_x = std::max(max_x, x);
-							min_z = std::min(min_z, z);
-							max_z = std::max(max_z, z);
-							float y = 0.0f;
-							way_vertices.emplace_back(x, y, z);
-						}
-						catch (const osmium::invalid_location&) {
-							// Skip invalid locations.
-						}
-					}
-					if (way_vertices.empty())
-						continue;
-					if (highway_value) {
-						std::string category = categorizeRoadType(highway_value);
-						RoadSegment segment;
-						segment.vertices = way_vertices;
-						segment.type = highway_value;
-						roadsByType[category].push_back(segment);
-					}
-					else if (is_building && way_vertices.size() >= 3) {
-						if (way_vertices.front() != way_vertices.back()) {
-							way_vertices.push_back(way_vertices.front());
-						}
-						buildingFootprints.push_back(way_vertices);
-					}
-				}
-			}
-		}
-		float padding = 50.0f;
-		groundPlaneVertices = {
-			{min_x - padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, max_z + padding},
-			{min_x - padding, -0.1f, max_z + padding}
-		};
-
-		int total_roads = 0;
-		for (const auto& road : roadsByType)
-			total_roads += road.second.size();
-
-		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
-		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
-	}
-	catch (const std::exception& e) {
-		std::cerr << "Error while parsing OSM: " << e.what() << std::endl;
-	}
-	reader_second_pass.close();
-}
-
-// -------------------------------
-// OpenGL Buffer Setup Functions
-// -------------------------------
-
-void setupRoadBuffers() {
-	for (const auto& road : roadsByType) {
-		const auto& type = road.first;
-		const auto& segments = road.second;
-		if (segments.empty())
-			continue;
-		std::vector<glm::vec3> allVertices;
-		for (const auto& segment : segments) {
-			for (size_t i = 0; i < segment.vertices.size() - 1; ++i) {
-				allVertices.push_back(segment.vertices[i]);
-				allVertices.push_back(segment.vertices[i + 1]);
-			}
-		}
-		if (allVertices.empty())
-			continue;
-		RenderData data;
-		glGenVertexArrays(1, &data.VAO);
-		glGenBuffers(1, &data.VBO);
-		glBindVertexArray(data.VAO);
-		glBindBuffer(GL_ARRAY_BUFFER, data.VBO);
-		glBufferData(GL_ARRAY_BUFFER, allVertices.size() * sizeof(glm::vec3), allVertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-		glEnableVertexAttribArray(0);
-		data.vertexCount = allVertices.size();
-		roadRenderData[type] = data;
-	}
-}
-
-void setupBuildingBuffers() {
-	for (const auto& footprint : buildingFootprints) {
-		if (footprint.size() < 3)
-			continue;
-		RenderData data;
-		glGenVertexArrays(1, &data.VAO);
-		glGenBuffers(1, &data.VBO);
-		glBindVertexArray(data.VAO);
-		glBindBuffer(GL_ARRAY_BUFFER, data.VBO);
-		glBufferData(GL_ARRAY_BUFFER, footprint.size() * sizeof(glm::vec3), footprint.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-		glEnableVertexAttribArray(0);
-		data.vertexCount = footprint.size();
-		buildingRenderData.push_back(data);
-	}
-}
-
-void setupGroundBuffer() {
-	glGenVertexArrays(1, &groundRenderData.VAO);
-	glGenBuffers(1, &groundRenderData.VBO);
-	glBindVertexArray(groundRenderData.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, groundRenderData.VBO);
-	glBufferData(GL_ARRAY_BUFFER, groundPlaneVertices.size() * sizeof(glm::vec3), groundPlaneVertices.data(), GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-	glEnableVertexAttribArray(0);
-	groundRenderData.vertexCount = groundPlaneVertices.size();
-}
 
 // -------------------------------
 // Shader Setup Function
@@ -775,3 +889,4 @@ int main() {
 	glfwTerminate();
 	return 0;
 }
+

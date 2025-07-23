@@ -1,4 +1,4 @@
-#include "../include/types.hpp"
+#include "../headers/types.hpp"
 
 Path::Path(unsigned long id, std::string name, unsigned long length, unsigned int number_of_lanes, Intersection* starting_intersection, Intersection* ending_intersection) {
 	m_id = id;
