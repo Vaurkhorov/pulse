@@ -17,6 +17,7 @@
 #include "helpingFunctions.hpp"
 #include "roadStructure.hpp"
 #include "renderData.hpp" 
+#include "scene.hpp"
 //extern LaneGraph lane0_graph;
 //extern LaneGraph lane1_graph;
 // the above 2 lines are in roadStructure.hpp, so no need to include them here again.
@@ -26,7 +27,8 @@
 
 
 // For parsing .osm Files into a data structure for successfull rendering
-void parseOSM(const std::string& filename);
+void parseOSM(const std::string& filename, Scene& scene);
+
 
 // TODO: For now, only secondary road's path is build, add other roads with proper handling for each case.
 void BuildLaneLevelGraphs(

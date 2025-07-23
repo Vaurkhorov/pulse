@@ -67,6 +67,16 @@ public:
         return glm::lookAt(Position, Position + Front, Up);
     }
 
+    // Reorients the camera to face a specific target point
+    void LookAt(const glm::vec3& target)
+    {
+        Front = glm::normalize(target - Position);
+        // Recalculate Pitch and Yaw from the new Front vector
+        Pitch = glm::degrees(asin(Front.y));
+        Yaw = glm::degrees(atan2(Front.z, Front.x));
+        updateCameraVectors(); // Update Right and Up vectors to be consistent
+    }
+
     // processes input received from any keyboard-like input system. Accepts input parameter in the form of camera defined ENUM (to abstract it from windowing systems)
     void ProcessKeyboard(Camera_Movement direction, float deltaTime)
     {
@@ -80,7 +90,7 @@ public:
         if (direction == RIGHT)
             Position += Right * velocity;
         if (direction == DOWN)
-            Position -= Up * velocity; 
+            Position -= Up * velocity;
         if (direction == UP)
             Position += Up * velocity;
     }

@@ -55,7 +55,8 @@ void BuildLaneLevelGraphs(
 
 
   
-  void parseOSM(const std::string& filename) {
+void parseOSM(const std::string& filename, Scene& scene) {
+
 
 	// setting up a location handler using a on-disk index for larger files
 
@@ -77,7 +78,7 @@ void BuildLaneLevelGraphs(
 
 	// initializing road categories
 	for (const auto& it : roadHierarchy) {
-		roadsByType[it] = std::vector<RoadSegment>();
+		scene.roadsByType[it] = std::vector<RoadSegment>();
 	} // TODO: add a comment what is happening here?
 
 	// Loading all nodes into the nodes into the index during FIRST pass.
@@ -163,7 +164,7 @@ void BuildLaneLevelGraphs(
 							segment.node_refs.push_back(node_ref.ref()); // storing the node IDs here
 						}
 						segment.vertices = way_vertices;
-						roadsByType[category].push_back(std::move(segment));
+						scene.roadsByType[category].push_back(std::move(segment));
 
 					}
 					else if (is_building && way_vertices.size() >= 3) // close the building if it's not closed by default 
@@ -172,25 +173,28 @@ void BuildLaneLevelGraphs(
 							way_vertices.push_back(way_vertices.front()); // if wayvertices is not one element long then; TODO: Wtf if this?
 						}
 
-						buildingFootprints.push_back(way_vertices);
+							scene.buildingFootprints.push_back(way_vertices);
 					}
 				}
 			}
 		}
 
-		// creating ground plane vertices
-		float padding = 50.0f; // TODO: change this according to the extra space around the map
-		groundPlaneVertices = {
-			{min_x - padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, max_z + padding},
-			{min_x - padding, -0.1f, max_z + padding}
-		}; // making the ground at -ve of the the base plane for a pop up effect. TODO change the height accordingly
+		// creating ground plane vertices and assigning to the scene object
+		float padding = 100.0f; // Extra space around the map
+		scene.groundPlaneVertices = {
+			{min_x - padding, -0.1f, max_z + padding}, // Front-left
+			{max_x + padding, -0.1f, max_z + padding}, // Front-right
+			{max_x + padding, -0.1f, min_z - padding}, // Back-right
+			{min_x - padding, -0.1f, min_z - padding}  // Back-left
+		};
+		// Note: I've re-ordered the vertices to be compatible with the TRIANGLES drawing
+		// in Scene.cpp, assuming a counter-clockwise winding order for the two triangles.
+
 
 
 		// Printing Stats:
 		int total_roads = 0;
-		for (const auto& road : roadsByType) {
+		for (const auto& road : scene.roadsByType) {
 			const auto& type = road.first;
 			const auto& segments = road.second;
 			total_roads += segments.size();
@@ -198,8 +202,8 @@ void BuildLaneLevelGraphs(
 
 		std::cout << "heloo" << std::endl;
 
-		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
-		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
+		std::cout << "Loaded " << total_roads << " roads across " << scene.roadsByType.size() << " categories" << std::endl;
+		std::cout << "Loaded " << scene.buildingFootprints.size() << " buildings" << std::endl;
 
 
 		// Parsing for CUDA Simulation
@@ -209,7 +213,7 @@ void BuildLaneLevelGraphs(
 		int next_id = 0;
 
 		// iterate each RoadSegment in all categories
-		for (auto const& kv : roadsByType) {
+		for (auto const& kv : scene.roadsByType) {
 			for (auto const& seg : kv.second) {
 				int lanes = seg.lanes > 0 ? seg.lanes : 2; // Number of lanes; For now, default number of lanes is 2 in the struct of the roadType
 				// TODO: remove the hard coded number of lanes later.

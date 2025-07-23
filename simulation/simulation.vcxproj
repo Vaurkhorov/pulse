@@ -145,6 +145,7 @@
     <ClCompile Include="src\Visualization_Core\imgui.cpp" />
     <ClCompile Include="src\Visualization_Core\osm.cpp" />
     <ClCompile Include="src\Visualization_Core\Render.cpp" />
+    <ClCompile Include="src\Visualization_Core\Scene.cpp" />
     <ClCompile Include="src\Visualization_Core\Structures.cpp" />
   </ItemGroup>
   <ItemGroup>
