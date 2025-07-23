@@ -1,3 +1,5 @@
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../headers/stb_image.h"
 #pragma once
 
 #ifdef _WIN32
@@ -47,7 +49,6 @@
 #include <random>
 #include <numeric>
 
-
 // --- CONFIGURATION ---
 static constexpr const unsigned int SCR_WIDTH = 1280;
 static constexpr const unsigned int SCR_HEIGHT = 720;
@@ -57,7 +58,9 @@ const char* FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulati
 const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
 
-void renderScene(const Scene& scene, Shader& shader, Camera& camera);
+
+
+void renderScene(const Scene& scene, Shader& shader, unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex);
 
 std::vector<glm::vec3> SelectRandomOrigins(const LaneGraph& laneGraph, size_t numOrigins) {
     std::vector<glm::vec3> keys;
@@ -77,6 +80,82 @@ std::vector<glm::vec3> SelectRandomOrigins(const LaneGraph& laneGraph, size_t nu
 float deltaTime = 0.0f, lastFrame = 0.0f;
 
 void static framebuffer_size_callback(GLFWwindow* window, int width, int height);
+
+/**
+ * @brief Loads a texture from a file, creates an OpenGL texture object, and optionally rotates it.
+ * @param path The file path to the texture image.
+ * @param rotate90 If true, the image will be rotated 90 degrees clockwise before being uploaded to the GPU.
+ * @return The ID of the generated OpenGL texture. Returns 0 on failure.
+ */
+unsigned int loadTexture(char const* path, bool rotate90 = false)
+{
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+
+    int width, height, nrComponents;
+    // Flip the image vertically on load to match OpenGL's coordinate system
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* data = stbi_load(path, &width, &height, &nrComponents, 0);
+
+    if (data)
+    {
+        unsigned char* data_to_upload = data; // Pointer to the data we'll actually send to the GPU
+        int upload_width = width;
+        int upload_height = height;
+
+        // If the rotate flag is true, perform the one-time CPU rotation
+        if (rotate90) {
+            std::cout << "Rotating texture " << path << " by 90 degrees." << std::endl;
+            data_to_upload = rotate_image_data_90_degrees(data, width, height, nrComponents);
+            // The dimensions are now swapped for the OpenGL call
+            upload_width = height;
+            upload_height = width;
+        }
+
+        GLenum format;
+        if (nrComponents == 1)
+            format = GL_RED;
+        else if (nrComponents == 3)
+            format = GL_RGB;
+        else if (nrComponents == 4)
+            format = GL_RGBA;
+        else {
+            std::cout << "Unsupported texture format for " << path << std::endl;
+            stbi_image_free(data);
+            return 0;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, textureID);
+
+        // This tells OpenGL that our data is tightly packed (no extra padding at the end of each row)
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        // Upload the correct image data (original or rotated) to the GPU
+        glTexImage2D(GL_TEXTURE_2D, 0, format, upload_width, upload_height, 0, format, GL_UNSIGNED_BYTE, data_to_upload);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        // Set texture wrapping and filtering options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // --- Memory Management ---
+        // Free the original data that stb_image loaded
+        stbi_image_free(data);
+
+        // If we created a new, separate buffer for the rotation, we must free it now
+        if (rotate90) {
+            delete[] data_to_upload;
+        }
+    }
+    else
+    {
+        std::cout << "Texture failed to load at path: " << path << std::endl;
+    }
+
+    return textureID;
+}
 
 int main() {
     // For debuging memory leaks
@@ -158,6 +237,9 @@ int main() {
 
     // TODO: CHange to your own Path
     Shader lightingShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
+    unsigned int roadTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\asphalt.jpg", true);
+    unsigned int buildingTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\concrete.jpg");
+    unsigned int groundTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\ground.jpg");
     glEnable(GL_DEPTH_TEST);
 
 
@@ -270,8 +352,10 @@ int main() {
             //glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), float(SCR_WIDTH) / SCR_HEIGHT, 0.1f, 8000.f); // TODO: I've hardcoded 8000 for now, but we need to do calculations to make this thing dynamic so that later when new map is loaded, so that it adjusts automatically.
             //ourShader.setMat4("projection", proj);
             //ourShader.setMat4("view", camera.GetViewMatrix());
+            lightingShader.setInt("ourTexture", 0);
 
-            renderScene(scene, lightingShader, camera);
+            renderScene(scene, lightingShader, groundTexture, roadTexture, buildingTexture);
+
 
             /*drawGround(ourShader);
             drawRoads(ourShader, roadColors);
@@ -348,39 +432,33 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-void renderScene(const Scene& scene, Shader& shader, Camera& camera) {
+void renderScene(const Scene& scene, Shader& shader, unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex) {
     glm::mat4 model = glm::mat4(1.0f);
     shader.setMat4("model", model);
 
-    // Draw Ground
-    shader.setVec3("objectColor", 0.3f, 0.3f, 0.3f); // Gray ground
+    // Set the active texture unit once at the beginning
+    glActiveTexture(GL_TEXTURE0);
+
+    // 1. Draw Ground
+    glBindTexture(GL_TEXTURE_2D, groundTex);
     glBindVertexArray(scene.groundRenderData.VAO);
     glDrawArrays(GL_TRIANGLES, 0, scene.groundRenderData.vertexCount);
 
-    // Draw Roads
-    static const std::map<std::string, glm::vec3> roadColors = {
-      {"motorway", {0.4f, 0.4f, 0.45f}}, {"trunk", {0.4f, 0.4f, 0.45f}},
-      {"primary", {0.5f, 0.5f, 0.5f}}, {"secondary", {0.6f, 0.6f, 0.6f}},
-      {"tertiary", {0.6f, 0.6f, 0.6f}}, {"residential", {0.7f, 0.7f, 0.7f}},
-      {"service", {0.7f, 0.7f, 0.7f}}, {"unclassified", {0.7f, 0.7f, 0.7f}},
-      {"other", {0.7f, 0.7f, 0.7f}}
-    };
-
-    glLineWidth(5.0f); // Can adjust width
+    // 2. Draw Roads
+    glBindTexture(GL_TEXTURE_2D, roadTex);
     for (const auto& pair : scene.roadRenderData) {
-        if (roadColors.count(pair.first)) {
-            shader.setVec3("objectColor", roadColors.at(pair.first));
-            glBindVertexArray(pair.second.VAO);
-            glDrawArrays(GL_LINES, 0, pair.second.vertexCount);
-        }
+        glBindVertexArray(pair.second.VAO);
+        // CRITICAL CHANGE: Draw the new road meshes as triangles, not lines
+        glDrawArrays(GL_TRIANGLES, 0, pair.second.vertexCount);
     }
 
-    // Draw Buildings
-    shader.setVec3("objectColor", 0.8f, 0.75f, 0.7f); // Beige buildings
+    // 3. Draw Buildings
+    glBindTexture(GL_TEXTURE_2D, buildingTex);
     for (const auto& data : scene.buildingRenderData) {
         glBindVertexArray(data.VAO);
         glDrawArrays(GL_TRIANGLES, 0, data.vertexCount);
     }
 
+    // Unbind the VAO at the end
     glBindVertexArray(0);
 }

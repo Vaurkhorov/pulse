@@ -29,3 +29,5 @@
 
 	extern // Utility function to generate random building heights
 		float getRandomBuildingHeight();
+
+	unsigned char* rotate_image_data_90_degrees(const unsigned char* input_data, int width, int height, int nrComponents);

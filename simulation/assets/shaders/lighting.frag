@@ -3,9 +3,12 @@ out vec4 FragColor;
 
 in vec3 Normal;
 in vec3 FragPos;
+in vec2 TexCoords; // NEW
 
-uniform vec3 viewPos; // Camera's position
-uniform vec3 objectColor;
+uniform vec3 viewPos;
+// uniform vec3 objectColor; // We replace this with a texture sampler
+
+uniform sampler2D ourTexture; // NEW: The texture sampler
 
 // Light properties
 uniform vec3 lightPos;
@@ -27,9 +30,13 @@ void main()
     float specularStrength = 0.5;
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32); // 32 is the shininess
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
     vec3 specular = specularStrength * spec * lightColor;
 
-    vec3 result = (ambient + diffuse + specular) * objectColor;
+    // Combine lighting and texture
+    vec3 lighting = (ambient + diffuse + specular);
+    vec3 textureColor = texture(ourTexture, TexCoords).rgb; // NEW
+    
+    vec3 result = lighting * textureColor; // NEW
     FragColor = vec4(result, 1.0);
 }
