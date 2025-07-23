@@ -11,49 +11,49 @@ LaneCell* d_laneCells = nullptr;
 
 
 void BuildTraversalPath() {
-    traversalPath.clear();
+	traversalPath.clear();
 
-    // 1. Build the graph
-    std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less> graph; // our main graph with the operator for comparison as Vec3Less.
-    auto it = roadsByType.find("secondary");
-    if (it == roadsByType.end()) return;
-    const std::vector<RoadSegment>& segments = it->second; // getting the Road Segment vector for the "secondary" category
-    for (const RoadSegment& seg : segments) {
-        if (seg.vertices.size() < 2) continue;
-        for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
-            const glm::vec3& a = seg.vertices[i];
-            const glm::vec3& b = seg.vertices[i + 1];
-            graph[a].push_back(b);
-            graph[b].push_back(a);
-        }
-    }
-    if (graph.empty()) return;
+	// 1. Build the graph
+	std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less> graph; // our main graph with the operator for comparison as Vec3Less.
+	auto it = roadsByType.find("secondary");
+	if (it == roadsByType.end()) return;
+	const std::vector<RoadSegment>& segments = it->second; // getting the Road Segment vector for the "secondary" category
+	for (const RoadSegment& seg : segments) {
+		if (seg.vertices.size() < 2) continue;
+		for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+			const glm::vec3& a = seg.vertices[i];
+			const glm::vec3& b = seg.vertices[i + 1];
+			graph[a].push_back(b);
+			graph[b].push_back(a);
+		}
+	}
+	if (graph.empty()) return;
 
-    // 2. Find a starting point (arbitrary: first key)
-    glm::vec3 start = graph.begin()->first;
+	// 2. Find a starting point (arbitrary: first key)
+	glm::vec3 start = graph.begin()->first;
 
-    // 3. DFS traversal to build a path
-    std::set<glm::vec3, Vec3Less> visited;
-    std::stack<glm::vec3> stack;
-    stack.push(start);
+	// 3. DFS traversal to build a path
+	std::set<glm::vec3, Vec3Less> visited;
+	std::stack<glm::vec3> stack;
+	stack.push(start);
 
-    while (!stack.empty()) {
-        glm::vec3 current = stack.top();
-        stack.pop();
-        if (visited.count(current)) continue;
-        visited.insert(current);
-        traversalPath.push_back(current);
-        for (const glm::vec3& neighbor : graph[current]) {
-            if (!visited.count(neighbor)) {
-                stack.push(neighbor);
-            }
-        }
-    }
+	while (!stack.empty()) {
+		glm::vec3 current = stack.top();
+		stack.pop();
+		if (visited.count(current)) continue;
+		visited.insert(current);
+		traversalPath.push_back(current);
+		for (const glm::vec3& neighbor : graph[current]) {
+			if (!visited.count(neighbor)) {
+				stack.push(neighbor);
+			}
+		}
+	}
+}
   
   void parseOSM(const std::string& filename) {
 
 	// setting up a location handler using a on-disk index for larger files
-
 	osmium::io::File input_file{ filename };
 	osmium::io::Reader reader{
 		input_file,

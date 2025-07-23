@@ -139,15 +139,15 @@ int main() {
     }
 
     static const std::map<std::string, glm::vec3> roadColors = {
-        {"motorway",     {0.0f,0.4f,0.0f}},
-        {"trunk",        {0.0f,0.4f,0.0f}},
-        {"primary",      {0.0f,0.4f,0.0f}},
-        {"secondary",    {0.6f,0.0f,0.0f}},
-        {"tertiary",     {0.0f,0.4f,0.0f}},
-        {"residential",  {0.0f,0.4f,0.0f}},
-        {"service",      {0.0f,0.4f,0.0f}},
-        {"unclassified", {0.0f,0.4f,0.0f}},
-        {"other",        {0.0f,0.4f,0.0f}}
+        {"motorway",     {0.8f,0.4f,0.0f}},
+        {"trunk",        {0.9f,0.6f,0.0f}},
+        {"primary",      {1.0f,0.8f,0.0f}},
+        {"secondary",    {1.0f,1.0f,0.0f}},
+        {"tertiary",     {0.9f,0.9f,0.5f}},
+        {"residential",  {0.8f,0.8f,0.8f}},
+        {"service",      {0.7f,0.7f,0.7f}},
+        {"unclassified", {0.7f,0.7f,0.7f}},
+        {"other",        {0.6f,0.6f,0.6f}}
     };
 
     // TODO: CHange to your own Path
