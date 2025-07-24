@@ -6,7 +6,7 @@ in vec3 FragPos;
 in vec2 TexCoords;
 
 uniform vec3 viewPos;
-uniform sampler2D ourTexture; // The ground texture
+uniform sampler2D ourTexture; // The building texture
 uniform vec3 lightPos;
 uniform vec3 lightColor;
 
@@ -24,13 +24,13 @@ void main()
     vec3 diffuse = diff * lightColor;
 
     // Specular
-    float specularStrength = 0.1; // Ground is not very shiny
+    float specularStrength = 0.5;
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 16);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
     vec3 specular = specularStrength * spec * lightColor;
     
-    // Combine lighting and the ground's texture
+    // Combine lighting and the building's texture
     vec3 lighting = (ambient + diffuse + specular);
     vec3 textureColor = texture(ourTexture, TexCoords).rgb;
     

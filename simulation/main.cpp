@@ -55,12 +55,26 @@ static constexpr const unsigned int SCR_HEIGHT = 720;
 const char* OSM_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\src\\map.osm";
 const char* VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\lighting.vert";
 const char* FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\lighting.frag";
+const char* BUILDING_FRAG_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\building.frag";
+const char* GROUND_FRAG_PATH= "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\ground.frag";
 const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
 
+void checkShaderErrors(unsigned int shader, const std::string& type) {
+    int success;
+    char infoLog[1024];
+    if (type != "PROGRAM") {
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (!success) {
+            glGetShaderInfoLog(shader, 1024, NULL, infoLog);
+            std::cerr << "Shader compilation error (" << type << "): " << infoLog << std::endl;
+        }
+    }
+}
 
-
-void renderScene(const Scene& scene, Shader& shader, unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex);
+void renderScene(const Scene& scene, Shader& groundShader, Shader& roadShader, Shader& buildingShader,
+    unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex,
+    glm::mat4& projection, glm::mat4& view, glm::vec3& lightPos, glm::vec3& lightColor, glm::vec3& viewPos);
 
 std::vector<glm::vec3> SelectRandomOrigins(const LaneGraph& laneGraph, size_t numOrigins) {
     std::vector<glm::vec3> keys;
@@ -157,6 +171,26 @@ unsigned int loadTexture(char const* path, bool rotate90 = false)
     return textureID;
 }
 
+void debugGeometry(const Scene& scene) {
+    std::cout << "Ground vertex count: " << scene.groundRenderData.vertexCount << std::endl;
+    std::cout << "Road render data size: " << scene.roadRenderData.size() << std::endl;
+    std::cout << "Building render data size: " << scene.buildingRenderData.size() << std::endl;
+
+    // Check if VAOs are valid
+    if (scene.groundRenderData.VAO == 0) {
+        std::cerr << "Ground VAO is invalid!" << std::endl;
+    }
+}
+
+// Add OpenGL error checking function:
+void checkGLError(const std::string& operation) {
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cerr << "OpenGL error after " << operation << ": " << error << std::endl;
+    }
+}
+
+
 int main() {
     // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -178,7 +212,7 @@ int main() {
         return -1;
     }
     glfwMakeContextCurrent(window); // ------  Do any work after this context --------
-
+    glfwSwapInterval(1); // Enable V-Sync to prevent tearing
 
     // --- Camera Setup ---
     // The approx hardcoded min and max values in my map
@@ -236,11 +270,28 @@ int main() {
     };
 
     // TODO: CHange to your own Path
-    Shader lightingShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
+    Shader roadShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
+    Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH);
+    Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
+
     unsigned int roadTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\asphalt.jpg", true);
+    if (roadTexture == 0) {
+        std::cerr << "Failed to load road texture!" << std::endl;
+    }
+
     unsigned int buildingTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\concrete.jpg");
+    if (buildingTexture == 0) {
+        std::cerr << "Failed to load building texture!" << std::endl;
+    }
+
     unsigned int groundTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\ground.jpg");
-    glEnable(GL_DEPTH_TEST);
+    if (groundTexture == 0) {
+        std::cerr << "Failed to load ground texture!" << std::endl;
+    }
+
+    //glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glEnable(GL_POLYGON_OFFSET_FILL);
 
 
     // load map
@@ -249,15 +300,15 @@ int main() {
     parseOSM(OSM_PATH, scene); // Modified to pass scene by reference
     scene.setupAllBuffers();
 
-    setupRoadBuffers();
+    /*setupRoadBuffers();
     setupBuildingBuffers();
     setupGroundBuffer();
-    setupLaneBuffer();
+    setupLaneBuffer();*/
 
     // Initialize moving dot path: disabled for now, in used for only 1 
     // InitMovingDotPath();: disabled for now, in used for only 1 dot
     //BuildTraversalPath();
-  LaneGraph lane0_graph, lane1_graph;
+  //LaneGraph lane0_graph, lane1_graph;
     BuildLaneLevelGraphs(lane0_graph, lane1_graph);
     // Now you have two separate lane-level graphs
 
@@ -309,77 +360,40 @@ int main() {
     // main loop
     while (!glfwWindowShouldClose(window)) {
         try {
+            // --- 1. Timing, Input, and Simulation ---
             float current = static_cast<float>(glfwGetTime());
             deltaTime = current - lastFrame;
             lastFrame = current;
 
-            //std::cout << "lane0_graph size: " << lane0_graph.size() << std::endl;
-            //std::cout << "lane1_graph size : " << lane1_graph.size() << std::endl;
-            // std::cout << std::flush;
             Input::keyboardInput(window, camera, deltaTime);
-
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            //if (rd.vertexCount == 0) continue;
-           // glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(rd.vertexCount));
-
-
-            // Update moving dot: disabled for now, in used for only 1 
-            // UpdateMovingDot(deltaTime);: disabled for now, in used for only 1 dot
-
-            /*std::cout << "Checkpoint 0" << std::endl;
-            std::cout << dots.size() << std::endl;
-            std::cout << std::flush;*/
-
-            //UpdateAllDotsIDM(traversalPath, deltaTime);
             UpdateAllDotsIDM(deltaTime);
-            //UpdateAllDotsIDM(lane1_graph, deltaTime);
 
-            /*std::cout << "Checkpoint 1" << std::endl;
-            std::cout << std::flush;*/
+            // --- 2. Prepare for Rendering ---
+            // Set the background color AND clear the color and depth buffers
+            glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST); // Ensure depth test is on for the 3D scene
 
-            // --- Render the scene with lighting ---
-            lightingShader.use();
-            lightingShader.setVec3("lightPos", glm::vec3(sceneCenter.x, 5000.0f, sceneCenter.z)); // Sun position
-            lightingShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-            lightingShader.setVec3("viewPos", camera.Position);
-
-
-            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 20000.0f);
+            // --- 3. Render the 3D Scene ---
+            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 1.0f, 15000.0f);
             glm::mat4 view = camera.GetViewMatrix();
-            lightingShader.setMat4("projection", projection);
-            lightingShader.setMat4("view", view);
-            // THe 8000 is the length/plane that will be rendered from my camera.
-            //glm::mat4 proj = glm::perspective(glm::radians(camera.Zoom), float(SCR_WIDTH) / SCR_HEIGHT, 0.1f, 8000.f); // TODO: I've hardcoded 8000 for now, but we need to do calculations to make this thing dynamic so that later when new map is loaded, so that it adjusts automatically.
-            //ourShader.setMat4("projection", proj);
-            //ourShader.setMat4("view", camera.GetViewMatrix());
-            lightingShader.setInt("ourTexture", 0);
+            glm::vec3 lightPos = glm::vec3(sceneCenter.x, 5000.0f, sceneCenter.z);
+            glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+            glm::vec3 viewPos = camera.Position;
 
-            renderScene(scene, lightingShader, groundTexture, roadTexture, buildingTexture);
+            renderScene(scene, groundShader, roadShader, buildingShader,
+                groundTexture, roadTexture, buildingTexture,
+                projection, view, lightPos, lightColor, viewPos);
 
 
-            /*drawGround(ourShader);
-            drawRoads(ourShader, roadColors);
-            drawLanes(ourShader, roadColors);
-            drawBuildings(ourShader);*/
+            // --- VEHICLE RENDERING WOULD GO HERE ---
+            // DrawAllDots(...) will be added here later.
 
 
-            // Draw the moving dot              : disabled for now, in used for only 1 dot
-            //DrawMovingDot(ourShader);         : disabled for now, in used for only 1 dot  
-            DrawAllDots(lightingShader);
-
-            // Currnelty the below functions are giving runtime errors(mostly null pointer error)
-            // Handle map interaction 
-            //ShowEditorWindow(&editorState.showDebugWindow); 
-            //HandleMapInteraction(camera, window);
-
-            /*std::cout << "Checkpoint 2" << std::endl;
-            std::cout << std::flush;*/
-
-            // For Server button
+            // --- 5. Render the ImGui User Interface (LAST) ---
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
-
             ImGui::Begin("Control Panel");
 
             if (isLoading) {
@@ -407,19 +421,20 @@ int main() {
                 }*/
             }
             ImGui::End();
-            glDisable(GL_DEPTH_TEST);   // Important to disable for ImGui overlays
-            ImGui::Render(); // render call is neccessary
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            //glEnable(GL_DEPTH_TEST); // causing problem in rendering
 
+            // This renders the ImGui window on top of your scene
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+
+            // --- 6. Swap Buffers and Poll Events ---
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
         catch (const std::exception& e) {
             std::cerr << "Exception in main loop: " << e.what() << std::endl;
         }
-        catch (...)
-        {
+        catch (...) {
             std::cerr << "Unknown exception in main loop" << std::endl;
         }
     }
@@ -432,33 +447,71 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-void renderScene(const Scene& scene, Shader& shader, unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex) {
-    glm::mat4 model = glm::mat4(1.0f);
-    shader.setMat4("model", model);
+/**
+ * @brief Renders the entire static scene, switching shaders for different object types.
+ * @param scene The scene object containing all geometry data.
+ * @param lightingShader The shader used for the ground and roads (with lane-painting logic).
+ * @param buildingShader The simpler shader used for buildings (no lane-painting).
+ * @param groundTex The OpenGL texture ID for the ground.
+ * @param roadTex The OpenGL texture ID for the asphalt.
+ * @param buildingTex The OpenGL texture ID for the buildings.
+ */
+void renderScene(const Scene& scene, Shader& groundShader, Shader& roadShader, Shader& buildingShader,
+    unsigned int groundTex, unsigned int roadTex, unsigned int buildingTex,
+    glm::mat4& projection, glm::mat4& view, glm::vec3& lightPos, glm::vec3& lightColor, glm::vec3& viewPos) {
 
-    // Set the active texture unit once at the beginning
+    glm::mat4 model = glm::mat4(1.0f);
     glActiveTexture(GL_TEXTURE0);
 
-    // 1. Draw Ground
+    // --- 1. Draw Ground ---
+    groundShader.use();
+    // Only set uniforms once per shader use
+    groundShader.setMat4("projection", projection);
+    groundShader.setMat4("view", view);
+    groundShader.setMat4("model", model);
+    groundShader.setVec3("lightPos", lightPos);
+    groundShader.setVec3("lightColor", lightColor);
+    groundShader.setVec3("viewPos", viewPos);
+    groundShader.setInt("ourTexture", 0);
+    
     glBindTexture(GL_TEXTURE_2D, groundTex);
     glBindVertexArray(scene.groundRenderData.VAO);
     glDrawArrays(GL_TRIANGLES, 0, scene.groundRenderData.vertexCount);
 
-    // 2. Draw Roads
+    // --- 2. Draw Roads ---
+    roadShader.use();
+    roadShader.setMat4("projection", projection);
+    roadShader.setMat4("view", view);
+    roadShader.setMat4("model", model);
+    roadShader.setVec3("lightPos", lightPos);
+    roadShader.setVec3("lightColor", lightColor);
+    roadShader.setVec3("viewPos", viewPos);
+    roadShader.setInt("ourTexture", 0);
+
+    glPolygonOffset(-1.0f, -1.0f);
     glBindTexture(GL_TEXTURE_2D, roadTex);
     for (const auto& pair : scene.roadRenderData) {
         glBindVertexArray(pair.second.VAO);
-        // CRITICAL CHANGE: Draw the new road meshes as triangles, not lines
         glDrawArrays(GL_TRIANGLES, 0, pair.second.vertexCount);
     }
 
-    // 3. Draw Buildings
+    // --- 3. Draw Buildings ---
+    buildingShader.use();
+    buildingShader.setMat4("projection", projection);
+    buildingShader.setMat4("view", view);
+    buildingShader.setMat4("model", model);
+    buildingShader.setVec3("lightPos", lightPos);
+    buildingShader.setVec3("lightColor", lightColor);
+    buildingShader.setVec3("viewPos", viewPos);
+    buildingShader.setInt("ourTexture", 0);
+
+    glPolygonOffset(0.0f, 0.0f);
     glBindTexture(GL_TEXTURE_2D, buildingTex);
     for (const auto& data : scene.buildingRenderData) {
         glBindVertexArray(data.VAO);
         glDrawArrays(GL_TRIANGLES, 0, data.vertexCount);
     }
 
-    // Unbind the VAO at the end
     glBindVertexArray(0);
 }
+

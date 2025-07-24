@@ -174,7 +174,7 @@
     <None Include="assets\shaders\camera_shader.frag" />
     <None Include="assets\shaders\camera_shader.vert" />
     <None Include="assets\shaders\f_shader.frag" />
-    <None Include="assets\shaders\Ground.frag" />
+    <None Include="assets\shaders\ground.frag" />
     <None Include="assets\shaders\Ground.vert" />
     <None Include="assets\shaders\main.frag" />
     <None Include="assets\shaders\main.vert" />
