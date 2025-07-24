@@ -91,9 +91,6 @@ struct Vec3Less {
 
 // LaneGraph type alias for convenience
 using LaneGraph = std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>;
-extern LaneGraph lane0_graph;
-extern LaneGraph lane1_graph;
-
 
 // represents a point along a path with attributes for position, speed, interpolation, segment index, 3D coordinates, and active status
 struct Dot {

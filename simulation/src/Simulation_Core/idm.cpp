@@ -121,6 +121,10 @@ void UpdateDotIDM(Dot& dot, const Dot* leader, float deltaTime)
 
 
     // --- 2. Find the vehicle's position on the centerline ---
+    if (dot.pathIndex >= traversalPaths.size()) {
+        dot.active = false;
+        return;
+    }
     const std::vector<glm::vec3>& path = traversalPaths[dot.pathIndex];
     if (path.size() < 2) {
         dot.active = false;

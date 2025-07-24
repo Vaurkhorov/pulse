@@ -32,6 +32,7 @@ void parseOSM(const std::string& filename, Scene& scene);
 
 // TODO: For now, only secondary road's path is build, add other roads with proper handling for each case.
 void BuildLaneLevelGraphs(
-    std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane0_graph,
-    std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane1_graph
+    const std::map<std::string, std::vector<RoadSegment>>& roads,
+    LaneGraph& lane0_graph,
+    LaneGraph& lane1_graph
 );

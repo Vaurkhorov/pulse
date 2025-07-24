@@ -8,14 +8,12 @@ std::vector<glm::vec3> traversalPath;
 std::vector<RenderData> buildingRenderData;
 std::map<std::string, RenderData> roadRenderData;
 LaneCell* d_laneCells = nullptr;
-// In main.cpp or osm.cpp (but only one .cpp file!)
-LaneGraph lane0_graph;
-LaneGraph lane1_graph;
 
 
 void BuildLaneLevelGraphs(
-	std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane0_graph,
-	std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>& lane1_graph
+	const std::map<std::string, std::vector<RoadSegment>>& roadsByType,
+	LaneGraph& lane0_graph,
+	LaneGraph& lane1_graph
 ) {
 	lane0_graph.clear();
 	lane1_graph.clear();

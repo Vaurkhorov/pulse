@@ -1,5 +1,4 @@
 #define STB_IMAGE_IMPLEMENTATION
-#include "../../headers/stb_image.h"
 #pragma once
 
 #ifdef _WIN32
@@ -37,6 +36,7 @@
 #include "../../headers/Visualisation_Headers/camera.hpp"
 #include "../../headers/Visualisation_Headers/shaders.hpp"
 #include "../../headers/CUDA_SimulationHeaders/idm.hpp"
+#include "../../headers/Visualisation_Headers/Model.hpp" 
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -57,6 +57,9 @@ const char* VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulati
 const char* FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\lighting.frag";
 const char* BUILDING_FRAG_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\building.frag";
 const char* GROUND_FRAG_PATH= "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\ground.frag";
+const char* CAR_VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\instanced.vert";
+const char* CAR_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\instanced.frag";
+LaneGraph lane0_graph, lane1_graph;
 const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
 
@@ -190,6 +193,184 @@ void checkGLError(const std::string& operation) {
     }
 }
 
+void createTestLaneGraph() {
+    std::cout << "Creating test lane graph..." << std::endl;
+
+    // Clear existing graphs
+    lane0_graph.clear();
+    lane1_graph.clear();
+
+    // Create a simple test path with a few connected points
+    std::vector<glm::vec3> testPath = {
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(100.0f, 0.0f, 0.0f),
+        glm::vec3(200.0f, 0.0f, 100.0f),
+        glm::vec3(300.0f, 0.0f, 200.0f),
+        glm::vec3(400.0f, 0.0f, 200.0f)
+    };
+
+    // Build simple connected graph
+    for (size_t i = 0; i < testPath.size() - 1; i++) {
+        lane0_graph[testPath[i]].push_back(testPath[i + 1]);
+        if (i > 0) {
+            lane0_graph[testPath[i]].push_back(testPath[i - 1]); // Bidirectional
+        }
+    }
+
+    std::cout << "Test lane graph created with " << lane0_graph.size() << " nodes" << std::endl;
+}
+
+
+void debugLaneGraphBuilding() {
+    std::cout << "=== BEFORE BuildLaneLevelGraphs ===" << std::endl;
+    std::cout << "lane0_graph size: " << lane0_graph.size() << std::endl;
+    std::cout << "lane1_graph size: " << lane1_graph.size() << std::endl;
+
+    // Call the function
+    /*BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);*/
+
+    std::cout << "=== AFTER BuildLaneLevelGraphs ===" << std::endl;
+    std::cout << "lane0_graph size: " << lane0_graph.size() << std::endl;
+    std::cout << "lane1_graph size: " << lane1_graph.size() << std::endl;
+
+    // Print some sample points if they exist
+    if (!lane0_graph.empty()) {
+        std::cout << "Sample lane0 points:" << std::endl;
+        int count = 0;
+        for (const auto& pair : lane0_graph) {
+            if (count >= 5) break; // Print first 5 points
+            std::cout << "  Point: (" << pair.first.x << ", " << pair.first.y << ", " << pair.first.z << ")" << std::endl;
+            std::cout << "  Connections: " << pair.second.size() << std::endl;
+            count++;
+        }
+    }
+    std::cout << "=================================" << std::endl;
+}
+
+void renderCarsWithDebug(const std::vector<Dot>& dots, Model& carModel,
+    Shader& carShader, unsigned int instanceVBO,
+    const glm::mat4& projection, const glm::mat4& view,
+    const glm::vec3& lightPos) {
+
+    // Collect model matrices from all active dots
+    std::vector<glm::mat4> modelMatrices;
+    int activeDots = 0;
+
+    for (const auto& dot : dots) {
+        if (dot.active) {
+            activeDots++;
+
+            // Create a proper model matrix for the car
+            glm::mat4 model = glm::mat4(1.0f);
+
+            // Translate to dot position
+            model = glm::translate(model, dot.position);
+
+            // Add some scaling to make cars more visible (adjust as needed)
+            model = glm::scale(model, glm::vec3(2.0f, 2.0f, 2.0f)); // Scale up cars
+
+            // Optional: rotate based on movement direction if available
+            // model = glm::rotate(model, dot.rotation, glm::vec3(0.0f, 1.0f, 0.0f));
+
+            modelMatrices.push_back(model);
+        }
+    }
+
+    // std::cout << "Rendering " << modelMatrices.size() << " cars (Active dots: " << activeDots << ")" << std::endl;
+
+    // If there are cars to draw, update the instance VBO and render them
+    if (!modelMatrices.empty()) {
+        // Update the instance VBO with the new matrices for this frame
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, modelMatrices.size() * sizeof(glm::mat4), modelMatrices.data());
+
+        // Check for OpenGL errors
+        GLenum error = glGetError();
+        if (error != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after buffer update: " << error << std::endl;
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        // Set up the car shader with its uniforms
+        carShader.use();
+        carShader.setMat4("projection", projection);
+        carShader.setMat4("view", view);
+        carShader.setVec3("lightPos", lightPos);
+        carShader.setVec3("carColor", 1.0f, 0.0f, 0.0f); // Red cars
+
+        // Check shader program validity
+        /*GLint currentProgram;
+        glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);*/
+        //std::cout << "Using shader program: " << currentProgram << std::endl;
+
+        // Draw all car instances in a single command
+        carModel.DrawInstanced(carShader, modelMatrices.size());
+
+
+        // Check for rendering errors
+        error = glGetError();
+        if (error != GL_NO_ERROR) {
+            std::cerr << "OpenGL error after drawing: " << error << std::endl;
+        }
+
+        glBindVertexArray(0);
+        glEnable(GL_CULL_FACE); // Re-enable if you were using it
+    }
+    else {
+        std::cout << "No active cars to render!" << std::endl;
+    }
+}
+
+void debugCarModel(const Model& carModel) {
+    std::cout << "=== CAR MODEL DEBUG ===" << std::endl;
+    std::cout << "VAO: " << carModel.VAO << std::endl;
+    std::cout << "Vertex count: " << carModel.vertexCount << std::endl;
+
+    // Check if VAO is valid
+    GLint isVAO;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &isVAO);
+    std::cout << "Current VAO binding: " << isVAO << std::endl;
+
+    // Bind and check the car VAO
+    glBindVertexArray(carModel.VAO);
+
+    // Check vertex attribute arrays
+    for (int i = 0; i < 7; ++i) {
+        GLint enabled;
+        glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &enabled);
+        if (enabled) {
+            GLint size, type, stride;
+            void* pointer;
+            glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_SIZE, &size);
+            glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_TYPE, &type);
+            glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
+            glGetVertexAttribPointerv(i, GL_VERTEX_ATTRIB_ARRAY_POINTER, &pointer);
+            std::cout << "Attribute " << i << ": size=" << size << ", type=" << type
+                << ", stride=" << stride << ", pointer=" << pointer << std::endl;
+        }
+    }
+
+    glBindVertexArray(0);
+    std::cout << "======================" << std::endl;
+}
+
+void validateCarModel(const Model& carModel) {
+    if (carModel.VAO == 0) {
+        std::cerr << "ERROR: Car model VAO is 0!" << std::endl;
+    }
+    if (carModel.vertexCount == 0) {
+        std::cerr << "ERROR: Car model has 0 vertices!" << std::endl;
+    }
+
+    // Check if the model file exists
+    std::ifstream file("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\models\\Car.obj");
+    if (!file.good()) {
+        std::cerr << "ERROR: Car.obj file not found or cannot be opened!" << std::endl;
+    }
+    file.close();
+}
+
 
 int main() {
     // For debuging memory leaks
@@ -273,6 +454,7 @@ int main() {
     Shader roadShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
     Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH);
     Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
+    Shader carShader(CAR_VERT_SHADER_PATH, CAR_FRAG_SHADER_PATH);
 
     unsigned int roadTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\asphalt.jpg", true);
     if (roadTexture == 0) {
@@ -288,6 +470,41 @@ int main() {
     if (groundTexture == 0) {
         std::cerr << "Failed to load ground texture!" << std::endl;
     }
+
+    // Car Model
+    Model carModel("C:/Users/Akhil/source/repos/pulse/simulation/assets/models/Car.obj");
+
+    validateCarModel(carModel);
+
+
+    unsigned int instanceVBO;
+    glGenBuffers(1, &instanceVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+    // Allocate buffer space for a max number of cars (e.g., 100,000)
+    glBufferData(GL_ARRAY_BUFFER, 100000 * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+
+    // --- Configure Vertex Attributes for the Instance VBO ---
+    // This is the key step: we add the matrix attributes to your car model's existing VAO
+    glBindVertexArray(carModel.VAO);
+
+    // Set up the instance matrix as a single mat4 attribute
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)0);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(1 * sizeof(glm::vec4)));
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(2 * sizeof(glm::vec4)));
+    glEnableVertexAttribArray(6);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(3 * sizeof(glm::vec4)));
+
+    // Set instance divisors
+    glVertexAttribDivisor(3, 1);
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+
+    glBindVertexArray(0);
+
 
     //glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -308,9 +525,17 @@ int main() {
     // Initialize moving dot path: disabled for now, in used for only 1 
     // InitMovingDotPath();: disabled for now, in used for only 1 dot
     //BuildTraversalPath();
-  //LaneGraph lane0_graph, lane1_graph;
-    BuildLaneLevelGraphs(lane0_graph, lane1_graph);
+    //LaneGraph lane0_graph, lane1_graph;    
+    //BuildLaneLevelGraphs(lane0_graph, lane1_graph);
+     BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+     debugLaneGraphBuilding();
     // Now you have two separate lane-level graphs
+
+     if (lane0_graph.empty()) {
+         std::cout << "Lane graph is empty, creating test graph..." << std::endl;
+         createTestLaneGraph();
+     }
+
 
    //InitDotsOnPath(traversalPath);
    //InitDotsOnPath(lane0_graph); // or lane1_graph, as appropriate
@@ -319,7 +544,7 @@ int main() {
     //glm::vec3 goal = ...; // pick a goal node
 
     // Example: select 5 random origins from lane0_graph
-    size_t numOrigins = 5;
+    size_t numOrigins = 10;
     std::vector<glm::vec3> origins = SelectRandomOrigins(lane0_graph, numOrigins);
 
     // Pick a random goal (different from origins)
@@ -346,6 +571,17 @@ int main() {
 
     // Now initialize dots
     InitDotsOnMultiplePaths(lane0_graph, origins, goal);
+    std::cout << "=== DOTS CREATED ===" << std::endl;
+    std::cout << "Total dots: " << dots.size() << std::endl;
+    std::cout << "Origins size: " << origins.size() << std::endl;
+    std::cout << "Lane0 graph size: " << lane0_graph.size() << std::endl;
+
+    if (!dots.empty()) {
+        std::cout << "First dot position: (" << dots[0].position.x << ", "
+            << dots[0].position.y << ", " << dots[0].position.z << ")" << std::endl;
+        std::cout << "First dot active: " << dots[0].active << std::endl;
+    }
+    std::cout << "===================" << std::endl;
 
 
     // or UpdateAllDotsIDM(lane1_graph, deltaTime); if you want to use the other lane graph
@@ -381,6 +617,7 @@ int main() {
             glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
             glm::vec3 viewPos = camera.Position;
 
+
             renderScene(scene, groundShader, roadShader, buildingShader,
                 groundTexture, roadTexture, buildingTexture,
                 projection, view, lightPos, lightColor, viewPos);
@@ -388,6 +625,10 @@ int main() {
 
             // --- VEHICLE RENDERING WOULD GO HERE ---
             // DrawAllDots(...) will be added here later.
+            // 1. Collect model matrices from all active dots
+            std::vector<glm::mat4> modelMatrices;
+            renderCarsWithDebug(dots, carModel, carShader, instanceVBO, projection, view, lightPos);
+
 
 
             // --- 5. Render the ImGui User Interface (LAST) ---
@@ -488,12 +729,15 @@ void renderScene(const Scene& scene, Shader& groundShader, Shader& roadShader, S
     roadShader.setVec3("viewPos", viewPos);
     roadShader.setInt("ourTexture", 0);
 
+    glEnable(GL_POLYGON_OFFSET_FILL); 
     glPolygonOffset(-1.0f, -1.0f);
     glBindTexture(GL_TEXTURE_2D, roadTex);
     for (const auto& pair : scene.roadRenderData) {
         glBindVertexArray(pair.second.VAO);
         glDrawArrays(GL_TRIANGLES, 0, pair.second.vertexCount);
     }
+
+    glDisable(GL_POLYGON_OFFSET_FILL);
 
     // --- 3. Draw Buildings ---
     buildingShader.use();
