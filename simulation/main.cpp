@@ -59,6 +59,9 @@ const char* BUILDING_FRAG_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simula
 const char* GROUND_FRAG_PATH= "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\ground.frag";
 const char* CAR_VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\instanced.vert";
 const char* CAR_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\instanced.frag";
+const char* FXAA_VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\fxaa.vert";
+const char* FXAA_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\fxaa.frag";
+
 LaneGraph lane0_graph, lane1_graph;
 const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
@@ -371,6 +374,17 @@ void validateCarModel(const Model& carModel) {
     file.close();
 }
 
+// In main.cpp, before the main() function
+float quadVertices[] = {
+    // positions   // texCoords
+    -1.0f,  1.0f,  0.0f, 1.0f,
+    -1.0f, -1.0f,  0.0f, 0.0f,
+     1.0f, -1.0f,  1.0f, 0.0f,
+
+    -1.0f,  1.0f,  0.0f, 1.0f,
+     1.0f, -1.0f,  1.0f, 0.0f,
+     1.0f,  1.0f,  1.0f, 1.0f
+};
 
 int main() {
     // For debuging memory leaks
@@ -427,6 +441,44 @@ int main() {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+    glEnable(GL_CULL_FACE); 
+    glCullFace(GL_BACK);
+    // --- Framebuffer for Post-Processing Setup ---
+    unsigned int FBO;
+    glGenFramebuffers(1, &FBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+
+    // Create the texture to render the scene to
+    unsigned int screenTexture;
+    glGenTextures(1, &screenTexture);
+    glBindTexture(GL_TEXTURE_2D, screenTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);
+
+    // Create a renderbuffer object for depth and stencil testing
+    unsigned int RBO;
+    glGenRenderbuffers(1, &RBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, RBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, RBO);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // --- Screen Quad VAO Setup ---
+    unsigned int quadVAO, quadVBO;
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
+    glBindVertexArray(quadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
     // client-server
     std::unique_ptr<Client_Server> clientServer;
@@ -455,6 +507,11 @@ int main() {
     Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH);
     Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
     Shader carShader(CAR_VERT_SHADER_PATH, CAR_FRAG_SHADER_PATH);
+    Shader fxaaShader(FXAA_VERT_SHADER_PATH, FXAA_FRAG_SHADER_PATH);
+
+    fxaaShader.use();
+    fxaaShader.setInt("screenTexture", 0);
+
 
     unsigned int roadTexture = loadTexture("C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\textures\\asphalt.jpg", true);
     if (roadTexture == 0) {
@@ -604,6 +661,10 @@ int main() {
             Input::keyboardInput(window, camera, deltaTime);
             UpdateAllDotsIDM(deltaTime);
 
+            glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+            glEnable(GL_DEPTH_TEST);
+
+
             // --- 2. Prepare for Rendering ---
             // Set the background color AND clear the color and depth buffers
             glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -630,6 +691,20 @@ int main() {
             renderCarsWithDebug(dots, carModel, carShader, instanceVBO, projection, view, lightPos);
 
 
+            // --- RENDER PASS 2: Draw Framebuffer to Screen with FXAA ---
+            glBindFramebuffer(GL_FRAMEBUFFER, 0); // Bind back to default framebuffer
+            glDisable(GL_DEPTH_TEST); // No depth test needed for a 2D quad
+
+            // Clear the screen
+            glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            fxaaShader.use();
+            fxaaShader.setVec2("u_resolution", (float)SCR_WIDTH, (float)SCR_HEIGHT);
+            glBindVertexArray(quadVAO);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, screenTexture);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
 
             // --- 5. Render the ImGui User Interface (LAST) ---
             ImGui_ImplOpenGL3_NewFrame();

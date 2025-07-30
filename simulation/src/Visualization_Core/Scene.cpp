@@ -102,25 +102,48 @@ void Scene::setupBuildingBuffers() {
     for (const auto& footprint : buildingFootprints) {
         if (footprint.size() < 3) continue;
 
+        // --- 1. Calculate the center of the building footprint ---
+        glm::vec3 centroid(0.0f);
+        for (size_t i = 0; i < footprint.size() - 1; ++i) { // Exclude the last duplicate point
+            centroid += footprint[i];
+        }
+        centroid /= (footprint.size() - 1);
+
         std::vector<float> vertexData;
         float height = getRandomBuildingHeight();
 
+        // --- 2. Create walls with corrected normals ---
         for (size_t i = 0; i < footprint.size() - 1; ++i) {
             glm::vec3 p1 = footprint[i];
             glm::vec3 p2 = footprint[i + 1];
             glm::vec3 p3 = glm::vec3(p2.x, height, p2.z);
             glm::vec3 p4 = glm::vec3(p1.x, height, p1.z);
+
+            // Calculate the normal assuming CCW winding
             glm::vec3 normal = glm::normalize(glm::cross(p2 - p1, p4 - p1));
 
-            // Triangle 1
+            // --- The crucial check ---
+            // Get a point in the middle of the wall segment
+            glm::vec3 wallCenter = (p1 + p2) / 2.0f;
+            // Get the direction from the building's center to the wall's center
+            glm::vec3 fromCenterToWall = wallCenter - centroid;
+
+            // If the normal is pointing back towards the center, flip it!
+            if (glm::dot(normal, fromCenterToWall) < 0) {
+                normal = -normal;
+            }
+
+            // Triangle 1 (Bottom-left, Top-right, Top-left)
             vertexData.insert(vertexData.end(), { p1.x, p1.y, p1.z, normal.x, normal.y, normal.z, 0.0f, 0.0f });
-            vertexData.insert(vertexData.end(), { p2.x, p2.y, p2.z, normal.x, normal.y, normal.z, 1.0f, 0.0f });
-            vertexData.insert(vertexData.end(), { p4.x, p4.y, p4.z, normal.x, normal.y, normal.z, 0.0f, 1.0f });
-            // Triangle 2
-            vertexData.insert(vertexData.end(), { p2.x, p2.y, p2.z, normal.x, normal.y, normal.z, 1.0f, 0.0f });
             vertexData.insert(vertexData.end(), { p3.x, p3.y, p3.z, normal.x, normal.y, normal.z, 1.0f, 1.0f });
             vertexData.insert(vertexData.end(), { p4.x, p4.y, p4.z, normal.x, normal.y, normal.z, 0.0f, 1.0f });
+
+            // Triangle 2 (Bottom-left, Bottom-right, Top-right)
+            vertexData.insert(vertexData.end(), { p1.x, p1.y, p1.z, normal.x, normal.y, normal.z, 0.0f, 0.0f });
+            vertexData.insert(vertexData.end(), { p2.x, p2.y, p2.z, normal.x, normal.y, normal.z, 1.0f, 0.0f });
+            vertexData.insert(vertexData.end(), { p3.x, p3.y, p3.z, normal.x, normal.y, normal.z, 1.0f, 1.0f });
         }
+
 
         // THe rooffff
         if (footprint.size() >= 3) {
