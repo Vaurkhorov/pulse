@@ -414,6 +414,11 @@ int main() {
     float minX = -3400.0f, maxX = 2300.0f; 
     float minZ = -2500.0f, maxZ = 3500.0f;
 
+    // -- simulation variables -- 
+    static bool useLocalSimulation = true;
+    static float simulationTimer = 0.0f;
+
+
     // The approax center of my map
     glm::vec3 sceneCenter((minX + maxX) * 0.5f, 0.0f, (minZ + maxZ) * 0.5f);
     
@@ -657,9 +662,26 @@ int main() {
             float current = static_cast<float>(glfwGetTime());
             deltaTime = current - lastFrame;
             lastFrame = current;
+            simulationTimer += deltaTime;
 
+            // Handle input
             Input::keyboardInput(window, camera, deltaTime);
-            UpdateAllDotsIDM(deltaTime);
+
+            // Choose simulation method
+            if (useLocalSimulation) {
+                UpdateAllDotsIDM(deltaTime);
+            }
+            else if (simulationTimer >= 0.1f && clientServer && !isLoading) {
+                simulationTimer = 0.0f;
+                std::string dummy;
+                try {
+                    clientServer->RunCUDAcode(dummy, isLoading, deltaTime * 10, 10);
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Auto-sync error: " << e.what() << std::endl;
+                    useLocalSimulation = true; // Fall back to local
+                }
+            }
 
             glBindFramebuffer(GL_FRAMEBUFFER, FBO);
             glEnable(GL_DEPTH_TEST);
@@ -706,37 +728,84 @@ int main() {
             glBindTexture(GL_TEXTURE_2D, screenTexture);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
+
+            // TODO: Make the server call non-blocking.
             // --- 5. Render the ImGui User Interface (LAST) ---
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
-            ImGui::Begin("Control Panel");
+            ImGui::Begin("Simulation Control");
 
-            if (isLoading) {
-                ImGui::Text("Loading...");
+            static float simulationSpeed = 1.0f;
+            static int simulationSteps = 10;
+
+            ImGui::Text("Simulation Controls");
+            ImGui::SliderFloat("Simulation Speed", &simulationSpeed, 0.1f, 5.0f, "%.1fx");
+            ImGui::SliderInt("Steps Per Update", &simulationSteps, 1, 50);
+
+            // Server status indicator
+            if (clientServer) {
+                ImGui::Separator();
+                ImGui::Text("Server: %s", isLoading ? "Processing" : "Ready");
+
+                if (isLoading) {
+                    ImGui::ProgressBar(1.0f, ImVec2(-1, 0), "Simulating...");
+                }
+                else {
+                    if (ImGui::Button("Run GPU Simulation", ImVec2(-1, 0))) {
+                        std::string dummy;
+                        try {
+                            // Capture current simulation time for the request
+                            static float accumulatedTime = 0.0f;
+                            accumulatedTime += deltaTime * simulationSpeed;
+
+                            std::string res = clientServer->RunCUDAcode(dummy, isLoading,
+                                accumulatedTime,
+                                simulationSteps);
+
+                            accumulatedTime = 0.0f; // Reset after simulation
+                            std::cout << "Simulation result: " << res << std::endl;
+                        }
+                        catch (const std::exception& e) {
+                            std::cerr << "Network error: " << e.what() << std::endl;
+                        }
+                    }
+                }
+
+                // Add simulation statistics
+                ImGui::Separator();
+                ImGui::Text("Statistics");
+                int activeDots = 0;
+                for (const auto& dot : dots) {
+                    if (dot.active) activeDots++;
+                }
+                ImGui::Text("Active vehicles: %d / %d", activeDots, (int)dots.size());
+                ImGui::Text("Frame time: %.2f ms", deltaTime * 1000.0f);
             }
-            else if (clientServer) {
-                if (ImGui::Button("Click Me!")) {
-                    std::string send = "Hello";
+            else {
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Server not connected");
+                if (ImGui::Button("Retry Connection")) {
                     try {
-                        // TODO: Add a loading bar!!!
-                        // This call is blocking and hangs the application. so better have a loading spiner prerender to call at this point.
-                        std::string res = clientServer->RunCUDAcode(send, isLoading);
-                        std::cout << "Received: " << res << std::endl;
+                        clientServer = std::make_unique<Client_Server>(SERVER_IP, SERVER_PORT);
                     }
                     catch (const std::exception& e) {
-                        std::cerr << "Network error: " << e.what() << std::endl;
+                        std::cerr << "ClientServer init failed: " << e.what() << std::endl;
                     }
                 }
             }
-            else {
-                ImGui::Text("Networking unavailable");
-                // TODO: Implement this functionality this later
-                /*if (ImGui::Button("Retry Connection")) {
-                    initNetworking();
-                }*/
+
+            ImGui::Checkbox("Use Local Simulation", &useLocalSimulation);
+            if (useLocalSimulation) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(Faster, less accurate)");
             }
+            else {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(GPU-accelerated, network dependent)");
+            }
+
             ImGui::End();
+
 
             // This renders the ImGui window on top of your scene
             ImGui::Render();
