@@ -1,13 +1,17 @@
 #pragma once
 
-#include<vector>
-#include"renderData.hpp"
-#include "osm.hpp"
-#include<string>
-//#include <GLFW/glfw3.h>
-#include<glad/glad.h>
-#include<map>
-#include<glm/glm.hpp>
+#include <vector>
+#include <string>
+#include <map>
+#include <glm/glm.hpp>
+#include <glad/glad.h>
+#include "renderData.hpp"
+#include <osmium/osm/types.hpp>
+
+
+
+// In a shared header (e.g., roadStructure.hpp)
+extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
 struct RoadSegment {
 	std::vector<glm::vec3> vertices; // coordinates
@@ -84,6 +88,10 @@ struct Vec3Less {
     }
 };
 
+
+// LaneGraph type alias for convenience
+using LaneGraph = std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less>;
+
 // represents a point along a path with attributes for position, speed, interpolation, segment index, 3D coordinates, and active status
 struct Dot {
     float s; // position along the path (arc length)
@@ -92,6 +100,8 @@ struct Dot {
     size_t segment; // current segment index
     glm::vec3 position;
     bool active;
+	size_t pathIndex;
+	glm::mat4 modelMatrix = glm::mat4(1.0f);
 };
 
 extern std::vector<Dot> dots;

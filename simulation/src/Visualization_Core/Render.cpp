@@ -18,7 +18,7 @@ void setupRoadBuffers()
 		const auto& segments = road.second;
 
 		if (segments.empty()) continue;
-
+			
 		// flattening all segments of the road of this type into one buffer
 		std::vector<glm::vec3> allVertices;
 
@@ -177,15 +177,34 @@ void drawGround(Shader& shader) {
 
 // drawing the lacars from the dot vector
 void DrawAllDots(const Shader& shader) {
-	glPointSize(12.0f);
-	shader.setVec3("color", glm::vec3(1, 0, 0));
-	glBegin(GL_POINTS);
+	// Collect active dot positions
+	std::vector<glm::vec3> positions;
 	for (const auto& dot : dots) {
 		if (dot.active)
-			glVertex3f(dot.position.x, dot.position.y + 2.0f, dot.position.z);
+			positions.emplace_back(dot.position.x, dot.position.y + 2.0f, dot.position.z);
 	}
-	glEnd(); 
-  
+	if (positions.empty()) return;
+
+	GLuint vao = 0, vbo = 0;
+	glGenVertexArrays(1, &vao);
+	glGenBuffers(1, &vbo);
+
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(glm::vec3), positions.data(), GL_DYNAMIC_DRAW);
+
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+
+	glPointSize(12.0f);
+	shader.setVec3("color", glm::vec3(1, 0, 0));
+	glDrawArrays(GL_POINTS, 0, static_cast<GLsizei>(positions.size()));
+
+	glBindVertexArray(0);
+	glDeleteBuffers(1, &vbo);
+	glDeleteVertexArrays(1, &vao);
+}
+
 // Making the Lanes from the vertices
 void drawLanes(Shader& shader, const std::map<std::string, glm::vec3>& roadColors) {
 

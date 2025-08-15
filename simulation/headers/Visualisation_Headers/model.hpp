@@ -53,8 +53,18 @@ public:
         for (unsigned int i = 0; i < meshes.size(); i++)
             meshes[i].Draw(shader);
     }
+    unsigned int VAO;
+    unsigned int VBO;
+    unsigned int vertexCount;
+
+    void DrawInstanced(Shader& shader, unsigned int instanceCount)
+    {
+        for (unsigned int i = 0; i < meshes.size(); i++)
+            meshes[i].DrawInstanced(shader, instanceCount);
+    }
 
 private:
+
     // computing the maxs and mins of the vertices of the 3d mdoels. ie precomputing.
     void ComputeBoundingBox() {
         aabb.min = glm::vec3(FLT_MAX);
@@ -75,7 +85,7 @@ private:
         Assimp::Importer importer;
         const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
         // check for errors
-        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) // if is Not Zero
+        if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         {
             cout << "ERROR::ASSIMP:: " << importer.GetErrorString() << endl;
             return;
@@ -86,8 +96,16 @@ private:
         // process ASSIMP's root node recursively
         processNode(scene->mRootNode, scene);
 
-        ComputeBoundingBox();
+        // After loading, we need to populate the VAO and vertexCount for the *first mesh*
+        // for our instancing code to work.
+        if (!meshes.empty()) {
+            VAO = meshes[0].VAO;
+            // IMPORTANT: For instancing, we need the number of INDICES, not vertices.
+            vertexCount = meshes[0].indices.size();
+        }
     }
+
+
 
     // processes a node in a recursive fashion. Processes each individual mesh located at the node and repeats this process on its children nodes (if any).
     void processNode(aiNode* node, const aiScene* scene)

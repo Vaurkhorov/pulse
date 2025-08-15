@@ -10,47 +10,51 @@ std::map<std::string, RenderData> roadRenderData;
 LaneCell* d_laneCells = nullptr;
 
 
-void BuildTraversalPath() {
-    traversalPath.clear();
+void BuildLaneLevelGraphs(
+	const std::map<std::string, std::vector<RoadSegment>>& roadsByType,
+	LaneGraph& lane0_graph,
+	LaneGraph& lane1_graph
+) {
+	lane0_graph.clear();
+	lane1_graph.clear();
 
-    // 1. Build the graph
-    std::map<glm::vec3, std::vector<glm::vec3>, Vec3Less> graph; // our main graph with the operator for comparison as Vec3Less.
-    auto it = roadsByType.find("secondary");
-    if (it == roadsByType.end()) return;
-    const std::vector<RoadSegment>& segments = it->second; // getting the Road Segment vector for the "secondary" category
-    for (const RoadSegment& seg : segments) {
-        if (seg.vertices.size() < 2) continue;
-        for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
-            const glm::vec3& a = seg.vertices[i];
-            const glm::vec3& b = seg.vertices[i + 1];
-            graph[a].push_back(b);
-            graph[b].push_back(a);
-        }
-    }
-    if (graph.empty()) return;
+	for (const auto& kv : roadsByType) {
+		for (const RoadSegment& seg : kv.second) {
+			int lanes = seg.lanes > 0 ? seg.lanes : 1;
+			if (lanes < 2) {
+				// Add to both graphs if only one lane
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane0_graph[a].push_back(b);
+					lane0_graph[b].push_back(a);
+					lane1_graph[a].push_back(b);
+					lane1_graph[b].push_back(a);
+				}
+			}
+			else {
+				// Add to each lane graph separately
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane0_graph[a].push_back(b);
+					lane0_graph[b].push_back(a);
+				}
+				for (size_t i = 0; i + 1 < seg.vertices.size(); ++i) {
+					const glm::vec3& a = seg.vertices[i];
+					const glm::vec3& b = seg.vertices[i + 1];
+					lane1_graph[a].push_back(b);
+					lane1_graph[b].push_back(a);
+				}
+			}
+		}
+	}
+}
 
-    // 2. Find a starting point (arbitrary: first key)
-    glm::vec3 start = graph.begin()->first;
 
-    // 3. DFS traversal to build a path
-    std::set<glm::vec3, Vec3Less> visited;
-    std::stack<glm::vec3> stack;
-    stack.push(start);
-
-    while (!stack.empty()) {
-        glm::vec3 current = stack.top();
-        stack.pop();
-        if (visited.count(current)) continue;
-        visited.insert(current);
-        traversalPath.push_back(current);
-        for (const glm::vec3& neighbor : graph[current]) {
-            if (!visited.count(neighbor)) {
-                stack.push(neighbor);
-            }
-        }
-    }
   
-  void parseOSM(const std::string& filename) {
+void parseOSM(const std::string& filename, Scene& scene) {
+
 
 	// setting up a location handler using a on-disk index for larger files
 
@@ -72,7 +76,7 @@ void BuildTraversalPath() {
 
 	// initializing road categories
 	for (const auto& it : roadHierarchy) {
-		roadsByType[it] = std::vector<RoadSegment>();
+		scene.roadsByType[it] = std::vector<RoadSegment>();
 	} // TODO: add a comment what is happening here?
 
 	// Loading all nodes into the nodes into the index during FIRST pass.
@@ -158,7 +162,7 @@ void BuildTraversalPath() {
 							segment.node_refs.push_back(node_ref.ref()); // storing the node IDs here
 						}
 						segment.vertices = way_vertices;
-						roadsByType[category].push_back(std::move(segment));
+						scene.roadsByType[category].push_back(std::move(segment));
 
 					}
 					else if (is_building && way_vertices.size() >= 3) // close the building if it's not closed by default 
@@ -167,25 +171,28 @@ void BuildTraversalPath() {
 							way_vertices.push_back(way_vertices.front()); // if wayvertices is not one element long then; TODO: Wtf if this?
 						}
 
-						buildingFootprints.push_back(way_vertices);
+							scene.buildingFootprints.push_back(way_vertices);
 					}
 				}
 			}
 		}
 
-		// creating ground plane vertices
-		float padding = 50.0f; // TODO: change this according to the extra space around the map
-		groundPlaneVertices = {
-			{min_x - padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, min_z - padding},
-			{max_x + padding, -0.1f, max_z + padding},
-			{min_x - padding, -0.1f, max_z + padding}
-		}; // making the ground at -ve of the the base plane for a pop up effect. TODO change the height accordingly
+		// creating ground plane vertices and assigning to the scene object
+		float padding = 100.0f; // Extra space around the map
+		scene.groundPlaneVertices = {
+			{min_x - padding, -0.1f, max_z + padding}, // Front-left
+			{max_x + padding, -0.1f, max_z + padding}, // Front-right
+			{max_x + padding, -0.1f, min_z - padding}, // Back-right
+			{min_x - padding, -0.1f, min_z - padding}  // Back-left
+		};
+		// Note: I've re-ordered the vertices to be compatible with the TRIANGLES drawing
+		// in Scene.cpp, assuming a counter-clockwise winding order for the two triangles.
+
 
 
 		// Printing Stats:
 		int total_roads = 0;
-		for (const auto& road : roadsByType) {
+		for (const auto& road : scene.roadsByType) {
 			const auto& type = road.first;
 			const auto& segments = road.second;
 			total_roads += segments.size();
@@ -193,8 +200,8 @@ void BuildTraversalPath() {
 
 		std::cout << "heloo" << std::endl;
 
-		std::cout << "Loaded " << total_roads << " roads across " << roadsByType.size() << " categories" << std::endl;
-		std::cout << "Loaded " << buildingFootprints.size() << " buildings" << std::endl;
+		std::cout << "Loaded " << total_roads << " roads across " << scene.roadsByType.size() << " categories" << std::endl;
+		std::cout << "Loaded " << scene.buildingFootprints.size() << " buildings" << std::endl;
 
 
 		// Parsing for CUDA Simulation
@@ -204,7 +211,7 @@ void BuildTraversalPath() {
 		int next_id = 0;
 
 		// iterate each RoadSegment in all categories
-		for (auto const& kv : roadsByType) {
+		for (auto const& kv : scene.roadsByType) {
 			for (auto const& seg : kv.second) {
 				int lanes = seg.lanes > 0 ? seg.lanes : 2; // Number of lanes; For now, default number of lanes is 2 in the struct of the roadType
 				// TODO: remove the hard coded number of lanes later.
