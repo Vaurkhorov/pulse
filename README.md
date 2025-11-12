@@ -41,8 +41,8 @@ Other `.cpp` files are in the `src` directory
 
 ### 📌 Requirements
 
-- **C++11**
-- **CUDA Toolkit 11.x or higher** -> **Not decided yet!!**
+- **C++17** or higher
+- **CUDA Toolkit 11.x or higher** 
 - **Visual Studio 2022** (for Windows dev)
 - **Assimp**, **GLFW3**, **GLAD**, **ImGui**, **stb_image**, **Boost/Asio**, **libosmium**,
 
@@ -50,16 +50,10 @@ Other `.cpp` files are in the `src` directory
 
 ### 🚀 Build Instructions (Windows)
 
-1. **Clone the repo:**
-
-```bash
-git clone https://github.com/<your-username>/PULSE.git
-cd PULSE
-```
-
-2. **Open `simulation.sln` in Visual Studio**
-3. Check the setup instruction above.
-4. **Build and Run** using `x64-Debug` or `x64-Release` mode
+1. **Clone the repo:**: Use the Visual Studio's Repo clone feature and clone this repo: `https://github.com/vaurkhorov/pulse`
+3. **Open `simulation.sln` in Visual Studio**
+4. Check the setup instruction above.
+5. **Build and Run** using `x64-Debug` or `x64-Release` mode
 
 ---
 
@@ -84,7 +78,10 @@ cd PULSE
 
 ## 🛠️ To-Do / Backlog
 
-- [ ] 
+- [ ] Make the new Map editor and optimize it.
+- [ ] Macro view implementation.
+- [ ] Increase the number of simulating vehicles.
+- [ ] Add a setup screen at the application initialisation
 
 ---
 
