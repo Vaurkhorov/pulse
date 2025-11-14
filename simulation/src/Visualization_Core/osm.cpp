@@ -9,7 +9,6 @@ std::vector<RenderData> buildingRenderData;
 std::map<std::string, RenderData> roadRenderData;
 LaneCell* d_laneCells = nullptr;
 
-
 void BuildLaneLevelGraphs(
 	const std::map<std::string, std::vector<RoadSegment>>& roadsByType,
 	LaneGraph& lane0_graph,
