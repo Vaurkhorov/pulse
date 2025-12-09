@@ -48,6 +48,7 @@
 #include<glm/gtc/matrix_inverse.hpp>
 #include <random>
 #include <numeric>
+#include <functional>
 
 // --- CONFIGURATION ---
 static constexpr const unsigned int SCR_WIDTH = 1280;
@@ -67,6 +68,9 @@ const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
 AppState currentAppState = AppState::START_MENU;
 bool showSidebar = false;
+bool isPaused = false;
+std::vector<glm::vec3> lastOrigins;
+glm::vec3 lastGoal;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -78,6 +82,57 @@ void checkShaderErrors(unsigned int shader, const std::string& type) {
             std::cerr << "Shader compilation error (" << type << "): " << infoLog << std::endl;
         }
     }
+}
+
+// the mop-editor redering function
+void renderDynamicEditor(const EditorState& state, Shader& colorShader, const glm::mat4& projection, const glm::mat4& view) {
+    if (state.currentWayPoints.empty()) return;
+
+    // 1. Prepare data: Existing points + current mouse position (ghost line)
+    std::vector<glm::vec3> lines;
+
+    // Add lines between fixed points
+    for (size_t i = 0; i < state.currentWayPoints.size() - 1; ++i) {
+        lines.push_back(state.currentWayPoints[i]);
+        lines.push_back(state.currentWayPoints[i + 1]);
+    }
+
+    // Add ghost line from last point to current mouse intersection
+    // (We need the current mouse intersection stored globally or passed here. 
+    //  For now, let's just draw the fixed points to start simple).
+
+    // We also need a visual marker for the points themselves
+    std::vector<glm::vec3> points = state.currentWayPoints;
+
+    // --- SETUP BUFFERS (Do this every frame for dynamic content is okay for low vertex count) ---
+    unsigned int VAO, VBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    colorShader.use();
+    colorShader.setMat4("projection", projection);
+    colorShader.setMat4("view", view);
+    colorShader.setMat4("model", glm::mat4(1.0f));
+
+    // Draw Points (Yellow)
+    colorShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Reuse lightColor as flat color if shader allows, or use a basic shader
+    glPointSize(10.0f);
+    glDrawArrays(GL_POINTS, 0, points.size());
+
+    // Draw Lines (Yellow)
+    if (points.size() > 1) {
+        glDrawArrays(GL_LINE_STRIP, 0, points.size());
+    }
+
+    // Cleanup
+    glDeleteBuffers(1, &VBO);
+    glDeleteVertexArrays(1, &VAO);
 }
 
 void renderScene(const Scene& scene, Shader& groundShader, Shader& roadShader, Shader& buildingShader,
@@ -451,7 +506,7 @@ void RenderStartMenu(GLFWwindow* window) {
 // --- RENDER FUNCTION: Sidebar ---
 void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSteps,
     std::unique_ptr<Client_Server>& clientServer, bool& isLoading,
-    float deltaTime, const std::vector<Dot>& dots, GLFWwindow* window) {
+    float deltaTime, const std::vector<Dot>& dots, GLFWwindow* window, Scene& scene, bool& isPaused, std::function<void(bool)> onReset) {
 
     ImGuiIO& io = ImGui::GetIO();
 
@@ -467,7 +522,6 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
 
     if (ImGui::Begin("Sidebar", p_open, window_flags)) {
 
-        // Header
         ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.9f, 1.0f), "SYSTEM CONTROL");
         ImGui::Separator();
         ImGui::Spacing();
@@ -476,8 +530,10 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
 
             // --- TAB 1: SIMULATION ---
             if (ImGui::BeginTabItem("Simulation")) {
-                ImGui::Spacing();
+                // Ensure we unpause if we switch back to simulation tab
+                if (isPaused && editorState.currentWayPoints.empty()) isPaused = false;
 
+                ImGui::Spacing();
                 ImGui::TextDisabled("COMPUTE BACKEND");
                 if (ImGui::RadioButton("Local (CPU)", useLocalSim)) useLocalSim = true;
                 if (ImGui::RadioButton("Network (CUDA)", !useLocalSim)) useLocalSim = false;
@@ -495,13 +551,11 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                     ImGui::Text("SERVER:"); ImGui::SameLine();
                     if (isLoading) {
                         ImGui::TextColored(ImVec4(1, 1, 0, 1), "PROCESSING...");
-                        // Animate progress bar
                         ImGui::ProgressBar((float)fmod(ImGui::GetTime(), 1.0), ImVec2(-1, 6));
                     }
                     else {
                         ImGui::TextColored(ImVec4(0, 1, 0, 1), "READY");
                     }
-
                     if (!useLocalSim && !isLoading) {
                         if (ImGui::Button("FORCE SYNC", ImVec2(-1, 30))) {
                             std::string dummy;
@@ -517,8 +571,6 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                 }
 
                 ImGui::Spacing(); ImGui::Separator();
-
-                // Stats
                 ImGui::TextDisabled("METRICS");
                 int activeDots = 0;
                 for (const auto& d : dots) if (d.active) activeDots++;
@@ -530,11 +582,14 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
 
             // --- TAB 2: EDITOR ---
             if (ImGui::BeginTabItem("Editor")) {
+
+                // 1. AUTO-PAUSE LOGIC
+                isPaused = true;
+                ImGui::Spacing();
+                ImGui::TextColored(ImVec4(1, 1, 0, 1), "[ SIMULATION PAUSED ]");
                 ImGui::Spacing();
 
                 ImGui::TextDisabled("TOOLS");
-
-                // Radio buttons for tool selection
                 int tool = (int)editorState.currentTool;
                 if (ImGui::RadioButton("Select", tool == 0)) editorState.currentTool = EditorState::SELECT;
                 if (ImGui::RadioButton("Add Road", tool == 1)) editorState.currentTool = EditorState::ADD_ROAD;
@@ -545,8 +600,6 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                 if (editorState.currentTool == EditorState::ADD_ROAD) {
                     ImGui::Separator();
                     ImGui::Text("Road Type:");
-
-                    // Combo box for cleaner road selection
                     if (ImGui::BeginCombo("##roadtype", editorState.selectedRoadType.c_str())) {
                         for (const auto& type : roadHierarchy) {
                             bool is_selected = (editorState.selectedRoadType == type);
@@ -564,43 +617,55 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                     ImGui::SliderFloat("Size", &editorState.gridSize, 1.0f, 20.0f);
                 }
 
-                // Waypoint Actions
                 if (!editorState.currentWayPoints.empty()) {
                     ImGui::Spacing();
                     ImGui::TextColored(ImVec4(1, 1, 0, 1), "Selected Points: %d", (int)editorState.currentWayPoints.size());
 
                     if (ImGui::Button("COMPLETE SHAPE", ImVec2(-1, 35))) {
-                        // Logic moved here for button click
                         if (editorState.currentTool == EditorState::ADD_ROAD) {
                             RoadSegment newRoad;
                             newRoad.vertices = editorState.currentWayPoints;
                             newRoad.type = editorState.selectedRoadType;
-                            roadsByType[editorState.selectedRoadType].push_back(newRoad);
-                            setupRoadBuffers();
+                            scene.roadsByType[editorState.selectedRoadType].push_back(newRoad);
+
+                            scene.setupRoadBuffers();
+
+                            lane0_graph.clear();
+                            lane1_graph.clear();
+                            BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+
+                            // --- NEW TEST LOGIC ---
+                            if (newRoad.vertices.size() >= 2) {
+                                // Get start and end of the new road
+                                glm::vec3 startNode = newRoad.vertices[0];
+                                glm::vec3 endNode = newRoad.vertices.back();
+
+                                onReset(true);
+
+                                // Restore UI state
+                                isPaused = false;
+                                *p_open = false;
+                                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                            }
+                            editorState.currentWayPoints.clear();
                         }
-                        // Add building logic here if needed
-                        editorState.currentWayPoints.clear();
                     }
 
                     if (ImGui::Button("Clear Points", ImVec2(-1, 20))) {
                         editorState.currentWayPoints.clear();
                     }
                 }
-
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
         }
 
-        // Footer: Menu Button
         ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 50);
         if (ImGui::Button("<< MAIN MENU", ImVec2(-1, 30))) {
             currentAppState = AppState::START_MENU;
             showSidebar = false;
-            // Unlock cursor for menu
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         }
-
     }
     ImGui::End();
     ImGui::PopStyleVar();
@@ -827,45 +892,84 @@ int main() {
     //std::vector<glm::vec3> origins = { origin1, origin2, origin3, origin4, origin5 };
     //glm::vec3 goal = ...; // pick a goal node
 
-    // Example: select 5 random origins from lane0_graph
-    size_t numOrigins = 10;
-    std::vector<glm::vec3> origins = SelectRandomOrigins(lane0_graph, numOrigins);
+   // --- SIMULATION RESET LOGIC ---
+    // We wrap this in a lambda so we can call it from the UI
+     auto resetSimulation = [&](bool reusePoints = false) {
+         std::cout << "Resetting Simulation..." << std::endl;
 
-    // Pick a random goal (different from origins)
-    glm::vec3 goal;
-    {
-        std::vector<glm::vec3> candidates;
-        for (const auto& kv : lane0_graph) {
-            const glm::vec3& pt = kv.first;
-            if (std::find(origins.begin(), origins.end(), pt) == origins.end())
-                candidates.push_back(pt);
-        }
-        if (!candidates.empty()) {
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
-            goal = candidates[dist(gen)];
-        }
-        else {
-            if (!lane0_graph.empty()) {
-                goal = lane0_graph.rbegin()->first;
-            } // fallback
-        }
-    }
+         dots.clear();
+         std::vector<glm::vec3> origins;
+         glm::vec3 goal;
 
-    // Now initialize dots
-    InitDotsOnMultiplePaths(lane0_graph, origins, goal);
-    std::cout << "=== DOTS CREATED ===" << std::endl;
-    std::cout << "Total dots: " << dots.size() << std::endl;
-    std::cout << "Origins size: " << origins.size() << std::endl;
-    std::cout << "Lane0 graph size: " << lane0_graph.size() << std::endl;
+         // MODE A: REUSE PREVIOUS POINTS (For Map Editor Testing)
+         if (reusePoints && !lastOrigins.empty()) {
+             std::cout << "[TEST MODE] Reusing previous start/end points on NEW map." << std::endl;
 
-    if (!dots.empty()) {
-        std::cout << "First dot position: (" << dots[0].position.x << ", "
-            << dots[0].position.y << ", " << dots[0].position.z << ")" << std::endl;
-        std::cout << "First dot active: " << dots[0].active << std::endl;
-    }
-    std::cout << "===================" << std::endl;
+             // We must find the nearest valid nodes again because the graph pointers 
+             // might have changed or shifted slightly during rebuild.
+             auto findNearest = [&](const glm::vec3& p) {
+                 float minDist = FLT_MAX;
+                 glm::vec3 best = p;
+                 for (const auto& kv : lane0_graph) {
+                     float d = glm::distance(kv.first, p);
+                     if (d < minDist) { minDist = d; best = kv.first; }
+                 }
+                 return best;
+                 };
+
+             // Snap old points to the new graph
+             for (const auto& o : lastOrigins) origins.push_back(findNearest(o));
+             goal = findNearest(lastGoal);
+         }
+         // MODE B: NEW RANDOM POINTS
+         else {
+             size_t numOrigins = 10;
+             origins = SelectRandomOrigins(lane0_graph, numOrigins);
+
+             // Pick random goal
+             std::vector<glm::vec3> candidates;
+             for (const auto& kv : lane0_graph) {
+                 if (std::find(origins.begin(), origins.end(), kv.first) == origins.end())
+                     candidates.push_back(kv.first);
+             }
+             if (!candidates.empty()) {
+                 std::random_device rd;
+                 std::mt19937 gen(rd());
+                 std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+                 goal = candidates[dist(gen)];
+             }
+             else if (!lane0_graph.empty()) {
+                 goal = lane0_graph.rbegin()->first;
+             }
+         }
+
+         // SAVE STATE for next time
+         lastOrigins = origins;
+         lastGoal = goal;
+
+         // Spawn the dots
+         InitDotsOnMultiplePaths(lane0_graph, origins, goal);
+
+         std::cout << "Simulation Reset. Active Dots: " << dots.size() << std::endl;
+         std::cout << "=== DOTS CREATED ===" << std::endl;
+         std::cout << "Total dots: " << dots.size() << std::endl;
+         std::cout << "Origins size: " << origins.size() << std::endl;
+         std::cout << "Lane0 graph size: " << lane0_graph.size() << std::endl;
+
+         if (!dots.empty()) {
+             std::cout << "First dot position: (" << dots[0].position.x << ", "
+                 << dots[0].position.y << ", " << dots[0].position.z << ")" << std::endl;
+             std::cout << "First dot active: " << dots[0].active << std::endl;
+         }
+         std::cout << "===================" << std::endl;
+
+         std::cout << "Simulation Reset. Active Dots: " << dots.size() << std::endl;
+         };
+
+     // Initial Start
+     resetSimulation();
+
+    
 
 
     // or UpdateAllDotsIDM(lane1_graph, deltaTime); if you want to use the other lane graph
@@ -875,7 +979,7 @@ int main() {
     // Initializing Imgui
     InitializeImGui(window);
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f); // Dark gray
-
+    resetSimulation(false);
 
     // main loop
     while (!glfwWindowShouldClose(window)) {
@@ -890,30 +994,33 @@ int main() {
             Input::keyboardInput(window, camera, deltaTime);
 
             // Choose simulation method
-            if (useLocalSimulation) {
-                // Apply Speed and Steps to Local Simulation
-                // Calculate total time to simulate this frame
-                float totalTimeStep = deltaTime * simulationSpeed;
+            if (!isPaused) {
+                if (useLocalSimulation) {
+                    // Apply Speed and Steps to Local Simulation
+                    // Calculate total time to simulate this frame
+                    float totalTimeStep = deltaTime * simulationSpeed;
 
-                // Calculate time per step (sub-stepping)
-                float stepTime = totalTimeStep / (float)simulationSteps;
+                    // Calculate time per step (sub-stepping)
+                    float stepTime = totalTimeStep / (float)simulationSteps;
 
-                // Run the update loop 'simulationSteps' times
-                for (int i = 0; i < simulationSteps; i++) {
-                    UpdateAllDotsIDM(stepTime);
+                    // Run the update loop 'simulationSteps' times
+                    for (int i = 0; i < simulationSteps; i++) {
+                        UpdateAllDotsIDM(stepTime);
+                    }
+                }
+                else if (simulationTimer >= 0.1f && clientServer && !isLoading) {
+                    simulationTimer = 0.0f;
+                    std::string dummy;
+                    try {
+                        clientServer->RunCUDAcode(dummy, isLoading, deltaTime * simulationSpeed, simulationSteps);
+                    }
+                    catch (const std::exception& e) {
+                        std::cerr << "Auto-sync error: " << e.what() << std::endl;
+                        useLocalSimulation = true; // Fall back to local
+                    }
                 }
             }
-            else if (simulationTimer >= 0.1f && clientServer && !isLoading) {
-                simulationTimer = 0.0f;
-                std::string dummy;
-                try {
-                    clientServer->RunCUDAcode(dummy, isLoading, deltaTime * simulationSpeed, simulationSteps);
-                }
-                catch (const std::exception& e) {
-                    std::cerr << "Auto-sync error: " << e.what() << std::endl;
-                    useLocalSimulation = true; // Fall back to local
-                }
-            }
+            
 
             glBindFramebuffer(GL_FRAMEBUFFER, FBO);
             glEnable(GL_DEPTH_TEST);
@@ -926,8 +1033,8 @@ int main() {
             glEnable(GL_DEPTH_TEST); // Ensure depth test is on for the 3D scene
 
             // --- 3. Render the 3D Scene ---
-            glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 1.0f, 15000.0f);
-            glm::mat4 view = camera.GetViewMatrix();
+            projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 1.0f, 15000.0f);
+            view = camera.GetViewMatrix();
             glm::vec3 lightPos = glm::vec3(sceneCenter.x, 5000.0f, sceneCenter.z);
             glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
             glm::vec3 viewPos = camera.Position;
@@ -937,6 +1044,19 @@ int main() {
                 groundTexture, roadTexture, buildingTexture,
                 projection, view, lightPos, lightColor, viewPos);
 
+            if (showSidebar && !editorState.currentWayPoints.empty()) {
+                // Using a simple shader (buildingShader is flat colored)
+                buildingShader.use();
+                buildingShader.setVec3("lightColor", glm::vec3(1.0, 0.8, 0.0)); // Orange/Yellow
+
+                // Temporarily disable depth test so editor lines appear ON TOP of everything?
+                // glDisable(GL_DEPTH_TEST); 
+
+                renderDynamicEditor(editorState, buildingShader, projection, view);
+
+                // Re-enable depth
+                // glEnable(GL_DEPTH_TEST);
+            }
 
             // --- VEHICLE RENDERING WOULD GO HERE ---
             // DrawAllDots(...) will be added here later.
@@ -1003,7 +1123,8 @@ int main() {
             else if (currentAppState == AppState::SIMULATION) {
                 if (showSidebar) {
                     RenderSidebar(&showSidebar, useLocalSimulation, simulationSpeed, simulationSteps,
-                        clientServer, isLoading, deltaTime, dots, window);
+                        clientServer, isLoading, deltaTime, dots, window, scene, isPaused, resetSimulation
+                    );
 
                     if (!ImGui::GetIO().WantCaptureMouse && cursorEnabled) {
                         HandleMapInteraction(camera, window);

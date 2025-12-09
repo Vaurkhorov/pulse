@@ -138,49 +138,82 @@ void ShowEditorWindow(bool* p_open) {
 }
 
 //Handles the way points using the ray and ground intersection points
+glm::vec3 currentMouseGroundPos(0.0f);
+
 void HandleMapInteraction(Camera& cam, GLFWwindow* window) {
-	if (ImGui::GetIO().WantCaptureMouse) return;
+    // 1. Get Window Size
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
 
-	// Getting mouse position in screen coordinates
-	double xpos, ypos;
-	glfwGetCursorPos(window, &xpos, &ypos);
+    if (width == 0 || height == 0) return;
+    // 2. Get Mouse Position
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
 
-	// getting viewPort size
-	int width, height;
-	glfwGetWindowSize(window, &width, &height);
+    // 3. Normalized Device Coordinates (NDC)
+    // -1 to 1 range
+    float x = (2.0f * (float)xpos) / (float)width - 1.0f;
+    float y = 1.0f - (2.0f * (float)ypos) / (float)height;
 
-	// converting to normalized device coordinates
-	float x = (2.0f * xpos) / width - 1.0f; // TODO: How is this calculation performed here?
-	float y = 1.0f - (2.0f * ypos) / height;
+    // 4. Homogeneous Clip Space
+    glm::vec4 ray_clip = glm::vec4(x, y, -1.0f, 1.0f);
 
+    // 5. Eye (Camera) Space
+    glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
+    ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f); // Set z to -1 (forward), w to 0 (vector)
 
-	// TODO: See the mathematics how this is done
-	// creating a ray in View space
-	glm::vec4 rayClip(x, y, -1.0f, 1.0f);
-	glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-	rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-	glm::vec3 rayWorld = glm::vec3(glm::inverse(view) * rayEye);
-	rayWorld = glm::normalize(rayWorld);
+    // 6. World Space
+    glm::vec3 ray_wor = glm::vec3(glm::inverse(view) * ray_eye);
+    ray_wor = glm::normalize(ray_wor);
 
+    // 7. Ray-Plane Intersection (Plane y = 0)
+    // Ray equation: P = CamPos + t * RayDir
+    // We want P.y = 0
+    // 0 = CamPos.y + t * RayDir.y  =>  t = -CamPos.y / RayDir.y
 
-	// TODO: isn't the ground plane at y=-1?
-	// Calculating intersection with ground plane y=0
-	float t = -cam.Position.y / rayWorld.y;
-	glm::vec3 intersection = cam.Position + (t * rayWorld);
+    // Check if looking strictly parallel or up (no intersection with ground)
+    if (std::abs(ray_wor.y) < 0.0001f) return;
 
-	// TODO: wtf is done here?
-	if (editorState.snapToGrid) {
-		intersection.x = round(intersection.x / editorState.gridSize) * editorState.gridSize;
-		intersection.z = round(intersection.z / editorState.gridSize) * editorState.gridSize;
-	}
+    float t = -cam.Position.y / ray_wor.y;
 
-	//Handle mouse clicks
-	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-		if (editorState.currentTool == EditorState::ADD_ROAD ||
-			editorState.currentTool == EditorState::ADD_BUILDING) {
-			// Add new point
-			editorState.currentWayPoints.push_back(intersection); // TODO: I don't think this is working!
-		}
-	}
+    // If t < 0, intersection is behind camera
+    if (t < 0.0f) return;
 
+    glm::vec3 intersect = cam.Position + ray_wor * t;
+
+    // 8. Snap to Grid Logic
+    if (editorState.snapToGrid) {
+        float g = editorState.gridSize;
+        intersect.x = round(intersect.x / g) * g;
+        intersect.z = round(intersect.z / g) * g;
+        intersect.y = 0.05f; // Slight offset to prevent z-fighting with ground
+    }
+
+    currentMouseGroundPos = intersect; // Update global for ghost rendering
+
+    // 9. Handle Click (Add Point)
+    // Debounce: ensure we don't add multiple points for one click
+    static bool mousePressedLastFrame = false;
+    bool mousePressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+
+    if (mousePressed && !mousePressedLastFrame) {
+        // Left Click: Add Point
+        if (editorState.currentTool == EditorState::ADD_ROAD ||
+            editorState.currentTool == EditorState::ADD_BUILDING) {
+
+            editorState.currentWayPoints.push_back(intersect);
+            std::cout << "Added Point: " << intersect.x << ", " << intersect.z << std::endl;
+        }
+    }
+    mousePressedLastFrame = mousePressed;
+
+    // Right Click: Remove Last Point (Undo)
+    static bool rightPressedLastFrame = false;
+    bool rightPressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
+    if (rightPressed && !rightPressedLastFrame) {
+        if (!editorState.currentWayPoints.empty()) {
+            editorState.currentWayPoints.pop_back();
+        }
+    }
+    rightPressedLastFrame = rightPressed;
 }
