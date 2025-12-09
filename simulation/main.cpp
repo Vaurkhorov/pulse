@@ -65,6 +65,8 @@ const char* FXAA_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\sim
 LaneGraph lane0_graph, lane1_graph;
 const std::string SERVER_IP = "192.168.31.195";
 const unsigned short SERVER_PORT = 12345;
+AppState currentAppState = AppState::START_MENU;
+bool showSidebar = false;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -386,6 +388,224 @@ float quadVertices[] = {
      1.0f,  1.0f,  1.0f, 1.0f
 };
 
+// --- RENDER FUNCTION: Start Menu ---
+void RenderStartMenu(GLFWwindow* window) {
+    // Fill the screen
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground;
+
+    if (ImGui::Begin("StartScreen", nullptr, flags)) {
+
+        // Centering math
+        float menuWidth = 350.0f;
+        float menuHeight = 300.0f;
+        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetCursorPos(ImVec2(center.x - menuWidth / 2, center.y - menuHeight / 2));
+
+        // The Menu Box
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.10f, 0.95f));
+        if (ImGui::BeginChild("MenuBox", ImVec2(menuWidth, menuHeight), true)) {
+
+            ImGui::Spacing(); ImGui::Spacing();
+
+            // Big Title
+            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]); // Default font
+            ImGui::SetWindowFontScale(2.0f);
+            const char* title = "P U L S E";
+            float textW = ImGui::CalcTextSize(title).x;
+            ImGui::SetCursorPosX((menuWidth - textW) * 0.5f);
+            ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.9f, 1.0f), title);
+            ImGui::SetWindowFontScale(1.0f);
+            ImGui::PopFont();
+
+            ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing(); ImGui::Spacing();
+
+            // Start Button
+            if (ImGui::Button("START SIMULATION", ImVec2(-1, 50))) {
+                currentAppState = AppState::SIMULATION;
+                showSidebar = false;
+                // Lock Cursor immediately
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+
+            ImGui::Spacing();
+
+            // Exit Button
+            if (ImGui::Button("EXIT TO DESKTOP", ImVec2(-1, 50))) {
+                glfwSetWindowShouldClose(window, true);
+            }
+
+            ImGui::Spacing(); ImGui::Spacing();
+
+            ImGui::TextDisabled("v0.1 Pre-Alpha | Engine Ready");
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+    }
+    ImGui::End();
+}
+
+// --- RENDER FUNCTION: Sidebar ---
+void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSteps,
+    std::unique_ptr<Client_Server>& clientServer, bool& isLoading,
+    float deltaTime, const std::vector<Dot>& dots, GLFWwindow* window) {
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Fixed Left Sidebar, Full Height
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(320, io.DisplaySize.y));
+
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+
+    if (ImGui::Begin("Sidebar", p_open, window_flags)) {
+
+        // Header
+        ImGui::TextColored(ImVec4(0.0f, 0.9f, 0.9f, 1.0f), "SYSTEM CONTROL");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        if (ImGui::BeginTabBar("SidebarTabs")) {
+
+            // --- TAB 1: SIMULATION ---
+            if (ImGui::BeginTabItem("Simulation")) {
+                ImGui::Spacing();
+
+                ImGui::TextDisabled("COMPUTE BACKEND");
+                if (ImGui::RadioButton("Local (CPU)", useLocalSim)) useLocalSim = true;
+                if (ImGui::RadioButton("Network (CUDA)", !useLocalSim)) useLocalSim = false;
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+
+                ImGui::TextDisabled("TIME SCALE");
+                ImGui::SliderFloat("Speed", &simSpeed, 0.1f, 5.0f, "%.1fx");
+                ImGui::SliderInt("Steps", &simSteps, 1, 50);
+
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+
+                // Server Status
+                if (clientServer) {
+                    ImGui::Text("SERVER:"); ImGui::SameLine();
+                    if (isLoading) {
+                        ImGui::TextColored(ImVec4(1, 1, 0, 1), "PROCESSING...");
+                        // Animate progress bar
+                        ImGui::ProgressBar((float)fmod(ImGui::GetTime(), 1.0), ImVec2(-1, 6));
+                    }
+                    else {
+                        ImGui::TextColored(ImVec4(0, 1, 0, 1), "READY");
+                    }
+
+                    if (!useLocalSim && !isLoading) {
+                        if (ImGui::Button("FORCE SYNC", ImVec2(-1, 30))) {
+                            std::string dummy;
+                            try {
+                                clientServer->RunCUDAcode(dummy, isLoading, deltaTime * simSpeed, simSteps);
+                            }
+                            catch (...) {}
+                        }
+                    }
+                }
+                else {
+                    ImGui::TextColored(ImVec4(1, 0, 0, 1), "DISCONNECTED");
+                }
+
+                ImGui::Spacing(); ImGui::Separator();
+
+                // Stats
+                ImGui::TextDisabled("METRICS");
+                int activeDots = 0;
+                for (const auto& d : dots) if (d.active) activeDots++;
+                ImGui::Text("Active Entities: %d", activeDots);
+                ImGui::Text("Frame Time: %.2f ms", 1000.0f / io.Framerate);
+
+                ImGui::EndTabItem();
+            }
+
+            // --- TAB 2: EDITOR ---
+            if (ImGui::BeginTabItem("Editor")) {
+                ImGui::Spacing();
+
+                ImGui::TextDisabled("TOOLS");
+
+                // Radio buttons for tool selection
+                int tool = (int)editorState.currentTool;
+                if (ImGui::RadioButton("Select", tool == 0)) editorState.currentTool = EditorState::SELECT;
+                if (ImGui::RadioButton("Add Road", tool == 1)) editorState.currentTool = EditorState::ADD_ROAD;
+                if (ImGui::RadioButton("Add Building", tool == 2)) editorState.currentTool = EditorState::ADD_BUILDING;
+
+                ImGui::Spacing();
+
+                if (editorState.currentTool == EditorState::ADD_ROAD) {
+                    ImGui::Separator();
+                    ImGui::Text("Road Type:");
+
+                    // Combo box for cleaner road selection
+                    if (ImGui::BeginCombo("##roadtype", editorState.selectedRoadType.c_str())) {
+                        for (const auto& type : roadHierarchy) {
+                            bool is_selected = (editorState.selectedRoadType == type);
+                            if (ImGui::Selectable(type.c_str(), is_selected))
+                                editorState.selectedRoadType = type;
+                            if (is_selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                }
+
+                ImGui::Separator();
+                ImGui::Checkbox("Snap to Grid", &editorState.snapToGrid);
+                if (editorState.snapToGrid) {
+                    ImGui::SliderFloat("Size", &editorState.gridSize, 1.0f, 20.0f);
+                }
+
+                // Waypoint Actions
+                if (!editorState.currentWayPoints.empty()) {
+                    ImGui::Spacing();
+                    ImGui::TextColored(ImVec4(1, 1, 0, 1), "Selected Points: %d", (int)editorState.currentWayPoints.size());
+
+                    if (ImGui::Button("COMPLETE SHAPE", ImVec2(-1, 35))) {
+                        // Logic moved here for button click
+                        if (editorState.currentTool == EditorState::ADD_ROAD) {
+                            RoadSegment newRoad;
+                            newRoad.vertices = editorState.currentWayPoints;
+                            newRoad.type = editorState.selectedRoadType;
+                            roadsByType[editorState.selectedRoadType].push_back(newRoad);
+                            setupRoadBuffers();
+                        }
+                        // Add building logic here if needed
+                        editorState.currentWayPoints.clear();
+                    }
+
+                    if (ImGui::Button("Clear Points", ImVec2(-1, 20))) {
+                        editorState.currentWayPoints.clear();
+                    }
+                }
+
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+        }
+
+        // Footer: Menu Button
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 50);
+        if (ImGui::Button("<< MAIN MENU", ImVec2(-1, 30))) {
+            currentAppState = AppState::START_MENU;
+            showSidebar = false;
+            // Unlock cursor for menu
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
 int main() {
     // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -417,6 +637,8 @@ int main() {
     // -- simulation variables -- 
     static bool useLocalSimulation = true;
     static float simulationTimer = 0.0f;
+    float simulationSpeed = 1.0f;
+    int simulationSteps = 10;
 
 
     // The approax center of my map
@@ -669,13 +891,23 @@ int main() {
 
             // Choose simulation method
             if (useLocalSimulation) {
-                UpdateAllDotsIDM(deltaTime);
+                // Apply Speed and Steps to Local Simulation
+                // Calculate total time to simulate this frame
+                float totalTimeStep = deltaTime * simulationSpeed;
+
+                // Calculate time per step (sub-stepping)
+                float stepTime = totalTimeStep / (float)simulationSteps;
+
+                // Run the update loop 'simulationSteps' times
+                for (int i = 0; i < simulationSteps; i++) {
+                    UpdateAllDotsIDM(stepTime);
+                }
             }
             else if (simulationTimer >= 0.1f && clientServer && !isLoading) {
                 simulationTimer = 0.0f;
                 std::string dummy;
                 try {
-                    clientServer->RunCUDAcode(dummy, isLoading, deltaTime * 10, 10);
+                    clientServer->RunCUDAcode(dummy, isLoading, deltaTime * simulationSpeed, simulationSteps);
                 }
                 catch (const std::exception& e) {
                     std::cerr << "Auto-sync error: " << e.what() << std::endl;
@@ -730,84 +962,55 @@ int main() {
 
 
             // TODO: Make the server call non-blocking.
-            // --- 5. Render the ImGui User Interface (LAST) ---
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
-            ImGui::Begin("Simulation Control");
 
-            static float simulationSpeed = 1.0f;
-            static int simulationSteps = 10;
+            // Toggle Sidebar logic (Only inside Simulation)
+            if (currentAppState == AppState::SIMULATION) {
+                // Toggle with TAB key
+                static bool tabPressedLastFrame = false;
+                bool tabPressed = (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS);
 
-            ImGui::Text("Simulation Controls");
-            ImGui::SliderFloat("Simulation Speed", &simulationSpeed, 0.1f, 5.0f, "%.1fx");
-            ImGui::SliderInt("Steps Per Update", &simulationSteps, 1, 50);
+                if (tabPressed && !tabPressedLastFrame) {
+                    showSidebar = !showSidebar;
 
-            // Server status indicator
-            if (clientServer) {
-                ImGui::Separator();
-                ImGui::Text("Server: %s", isLoading ? "Processing" : "Ready");
-
-                if (isLoading) {
-                    ImGui::ProgressBar(1.0f, ImVec2(-1, 0), "Simulating...");
-                }
-                else {
-                    if (ImGui::Button("Run GPU Simulation", ImVec2(-1, 0))) {
-                        std::string dummy;
-                        try {
-                            // Capture current simulation time for the request
-                            static float accumulatedTime = 0.0f;
-                            accumulatedTime += deltaTime * simulationSpeed;
-
-                            std::string res = clientServer->RunCUDAcode(dummy, isLoading,
-                                accumulatedTime,
-                                simulationSteps);
-
-                            accumulatedTime = 0.0f; // Reset after simulation
-                            std::cout << "Simulation result: " << res << std::endl;
-                        }
-                        catch (const std::exception& e) {
-                            std::cerr << "Network error: " << e.what() << std::endl;
-                        }
+                    if (showSidebar) {
+                        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                        cursorEnabled = true;
+                    }
+                    else {
+                        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                        cursorEnabled = false;
                     }
                 }
-
-                // Add simulation statistics
-                ImGui::Separator();
-                ImGui::Text("Statistics");
-                int activeDots = 0;
-                for (const auto& dot : dots) {
-                    if (dot.active) activeDots++;
-                }
-                ImGui::Text("Active vehicles: %d / %d", activeDots, (int)dots.size());
-                ImGui::Text("Frame time: %.2f ms", deltaTime * 1000.0f);
+                tabPressedLastFrame = tabPressed;
             }
-            else {
-                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Server not connected");
-                if (ImGui::Button("Retry Connection")) {
-                    try {
-                        clientServer = std::make_unique<Client_Server>(SERVER_IP, SERVER_PORT);
+
+            // --- RENDER BASED ON STATE ---
+
+            if (currentAppState == AppState::START_MENU) {
+                RenderStartMenu(window);
+
+                // BUG FIX: Only force cursor visible if we are STILL in the menu
+                // (If the user clicked "Start", currentAppState is now SIMULATION, so skip this)
+                if (currentAppState == AppState::START_MENU) {
+                    if (glfwGetInputMode(window, GLFW_CURSOR) != GLFW_CURSOR_NORMAL) {
+                        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
                     }
-                    catch (const std::exception& e) {
-                        std::cerr << "ClientServer init failed: " << e.what() << std::endl;
+                }
+            }
+            else if (currentAppState == AppState::SIMULATION) {
+                if (showSidebar) {
+                    RenderSidebar(&showSidebar, useLocalSimulation, simulationSpeed, simulationSteps,
+                        clientServer, isLoading, deltaTime, dots, window);
+
+                    if (!ImGui::GetIO().WantCaptureMouse && cursorEnabled) {
+                        HandleMapInteraction(camera, window);
                     }
                 }
             }
 
-            ImGui::Checkbox("Use Local Simulation", &useLocalSimulation);
-            if (useLocalSimulation) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(Faster, less accurate)");
-            }
-            else {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(GPU-accelerated, network dependent)");
-            }
-
-            ImGui::End();
-
-
-            // This renders the ImGui window on top of your scene
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

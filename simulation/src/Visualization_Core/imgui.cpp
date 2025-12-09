@@ -9,17 +9,51 @@ void ShowEditorWindow(bool* p_open);
 bool cursorEnabled = false;
 void HandleMapInteraction(Camera& cam, GLFWwindow* window);
 
+void ApplyModernStyle() {
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    // Rounding & Spacing
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.PopupRounding = 4.0f;
+    style.ScrollbarRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+    style.WindowPadding = ImVec2(15, 15);
+    style.ItemSpacing = ImVec2(10, 8);
+
+    // Dark Cyberpunk Palette
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_Text] = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.12f, 0.96f); // Dark translucent
+    colors[ImGuiCol_ChildBg] = ImVec4(0.14f, 0.14f, 0.16f, 1.00f);
+    colors[ImGuiCol_Border] = ImVec4(0.30f, 0.30f, 0.35f, 0.50f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.21f, 0.22f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.40f, 0.40f, 0.40f, 0.40f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.28f, 0.28f, 0.28f, 0.67f);
+
+    // Accent Color (Teal/Cyan)
+    ImVec4 accent = ImVec4(0.00f, 0.60f, 0.60f, 1.00f);
+    ImVec4 accentHover = ImVec4(0.00f, 0.75f, 0.75f, 1.00f);
+
+    colors[ImGuiCol_Button] = ImVec4(0.00f, 0.50f, 0.50f, 0.60f);
+    colors[ImGuiCol_ButtonHovered] = accentHover;
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.00f, 0.40f, 0.40f, 1.00f);
+    colors[ImGuiCol_Header] = ImVec4(0.22f, 0.22f, 0.22f, 1.00f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = accent;
+    colors[ImGuiCol_CheckMark] = accent;
+    colors[ImGuiCol_SliderGrab] = accent;
+    colors[ImGuiCol_SliderGrabActive] = accentHover;
+}
 
 void InitializeImGui(GLFWwindow* window) {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	(void)io; // TODO: Wtf is this?
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
 
-	ImGui::StyleColorsDark();
+	ApplyModernStyle();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
-
 	ImGui_ImplOpenGL3_Init("#version 330");
 }
 

@@ -5,8 +5,14 @@
 #include"editor.hpp"
 #include"roadStructure.hpp"
 #include"camera.hpp"
+#include "../ServerHeaders/server.hpp"
 #include<glm/glm.hpp>
 #include <GLFW/glfw3.h>
+
+enum class AppState {
+    START_MENU,
+    SIMULATION
+};
 
 extern glm::mat4 projection;
 extern glm::mat4 view;
