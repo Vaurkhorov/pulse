@@ -9,11 +9,19 @@ uniform vec3 viewPos;
 uniform sampler2D ourTexture; // The building texture
 uniform vec3 lightPos;
 uniform vec3 lightColor;
+uniform vec3 flatColor;
+uniform bool useFlatColor; 
 
 void main()
 {
     // --- Standard Blinn-Phong Lighting ---
     // Ambient
+
+    if (useFlatColor) {
+        FragColor = vec4(flatColor, 1.0);
+        return; // Skip lighting calculations
+    }
+
     float ambientStrength = 0.2;
     vec3 ambient = ambientStrength * lightColor;
 

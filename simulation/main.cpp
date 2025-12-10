@@ -120,18 +120,23 @@ void renderDynamicEditor(const EditorState& state, Shader& colorShader, const gl
     colorShader.setMat4("projection", projection);
     colorShader.setMat4("view", view);
     colorShader.setMat4("model", glm::mat4(1.0f));
+    // 1. Turn Flat Color ON
+    colorShader.setBool("useFlatColor", true);
 
-    // Draw Points (Yellow)
-    colorShader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 0.0f)); // Reuse lightColor as flat color if shader allows, or use a basic shader
+    // 2. Draw Points (Yellow)
+    colorShader.setVec3("flatColor", glm::vec3(1.0f, 1.0f, 0.0f));
     glPointSize(10.0f);
     glDrawArrays(GL_POINTS, 0, points.size());
 
-    // Draw Lines (Yellow)
+    // 3. Draw Lines (Yellow)
     if (points.size() > 1) {
         glDrawArrays(GL_LINE_STRIP, 0, points.size());
     }
 
-    // Cleanup
+    // 4. Turn Flat Color OFF (Cleanup)
+    colorShader.setBool("useFlatColor", false);
+    // --- FIX END ---
+
     glDeleteBuffers(1, &VBO);
     glDeleteVertexArrays(1, &VAO);
 }
@@ -701,10 +706,13 @@ void renderGraphDebug(const LaneGraph& graph, Shader& shader, const glm::mat4& p
     shader.setMat4("projection", projection);
     shader.setMat4("view", view);
     shader.setMat4("model", glm::mat4(1.0f));
-    shader.setVec3("lightColor", glm::vec3(0.0f, 1.0f, 0.0f)); // Bright Green Lines
+    shader.setBool("useFlatColor", true); // ON
+    shader.setVec3("flatColor", glm::vec3(0.0f, 1.0f, 0.0f)); // Green
 
     glDrawArrays(GL_LINES, 0, lines.size());
 
+    shader.setBool("useFlatColor", false); // OFF
+    glDrawArrays(GL_LINES, 0, lines.size());
     glDeleteBuffers(1, &VBO);
     glDeleteVertexArrays(1, &VAO);
 }
@@ -733,9 +741,13 @@ void renderValidNodes(const LaneGraph& graph, Shader& shader, const glm::mat4& p
     shader.setMat4("projection", projection);
     shader.setMat4("view", view);
     shader.setMat4("model", glm::mat4(1.0f));
+    shader.setBool("useFlatColor", true); // ON
+    shader.setVec3("flatColor", glm::vec3(0.0f, 0.5f, 1.0f)); // Blue
 
-    // BLUE COLOR for valid connection points
-    shader.setVec3("lightColor", glm::vec3(0.0f, 0.5f, 1.0f));
+    glPointSize(8.0f);
+    glDrawArrays(GL_POINTS, 0, nodes.size());
+
+    shader.setBool("useFlatColor", false); // OFF
 
     glPointSize(8.0f); // Make them visible
     glDrawArrays(GL_POINTS, 0, nodes.size());
@@ -752,12 +764,15 @@ void renderPathDebug(const std::vector<std::vector<glm::vec3>>& paths, Shader& s
     shader.setMat4("projection", projection);
     shader.setMat4("view", view);
     shader.setMat4("model", glm::mat4(1.0f));
-    shader.setVec3("lightColor", glm::vec3(1.0f, 0.0f, 0.0f)); // RED for active paths
+    shader.setVec3("flatColor", glm::vec3(1.0f, 0.0f, 0.0f)); // RED for active paths
+    shader.setBool("useFlatColor", false);
+
+    shader.setBool("useFlatColor", true);
+    shader.setVec3("flatColor", glm::vec3(1.0f, 0.0f, 0.0f)); // Red
 
     for (const auto& path : paths) {
         if (path.size() < 2) continue;
 
-        // Lift path slightly higher than the road and the blue dots
         std::vector<glm::vec3> renderPath = path;
         for (auto& p : renderPath) p.y += 1.0f;
 
@@ -771,13 +786,15 @@ void renderPathDebug(const std::vector<std::vector<glm::vec3>>& paths, Shader& s
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), 0);
         glEnableVertexAttribArray(0);
 
-        glLineWidth(3.0f); // Make lines thick
+        glLineWidth(3.0f);
         glDrawArrays(GL_LINE_STRIP, 0, renderPath.size());
-        glLineWidth(1.0f); // Reset width
+        glLineWidth(1.0f);
 
         glDeleteBuffers(1, &VBO);
         glDeleteVertexArrays(1, &VAO);
     }
+
+    shader.setBool("useFlatColor", false); // OFF after loop
 }
 
 int main() {
@@ -904,7 +921,7 @@ int main() {
     };
 
     Shader roadShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
-    Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH);
+    Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH); // change the shaders
     Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
     Shader carShader(CAR_VERT_SHADER_PATH, CAR_FRAG_SHADER_PATH);
     Shader fxaaShader(FXAA_VERT_SHADER_PATH, FXAA_FRAG_SHADER_PATH);
