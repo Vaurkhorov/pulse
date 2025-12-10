@@ -7,7 +7,7 @@ void InitializeImGui(GLFWwindow* window);
 void ShutdownImGui();
 void ShowEditorWindow(bool* p_open);
 bool cursorEnabled = false;
-void HandleMapInteraction(Camera& cam, GLFWwindow* window);
+void HandleMapInteraction(Camera& cam, GLFWwindow* window, LaneGraph lane_graph);
 
 void ApplyModernStyle() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -140,7 +140,7 @@ void ShowEditorWindow(bool* p_open) {
 //Handles the way points using the ray and ground intersection points
 glm::vec3 currentMouseGroundPos(0.0f);
 
-void HandleMapInteraction(Camera& cam, GLFWwindow* window) {
+void HandleMapInteraction(Camera& cam, GLFWwindow* window, LaneGraph lane0_graph) {
     // 1. Get Window Size
     int width, height;
     glfwGetWindowSize(window, &width, &height);
@@ -179,15 +179,44 @@ void HandleMapInteraction(Camera& cam, GLFWwindow* window) {
     // If t < 0, intersection is behind camera
     if (t < 0.0f) return;
 
+    // 8. Snap to Grid Logic
     glm::vec3 intersect = cam.Position + ray_wor * t;
 
-    // 8. Snap to Grid Logic
-    if (editorState.snapToGrid) {
+    // --- NEW: INTELLIGENT SNAPPING ---
+    bool snapped = false;
+    float snapThreshold = 5.0f; // 5 meters
+
+    // 1. Try Snapping to Existing Graph Nodes (High Priority)
+    if (editorState.currentTool == EditorState::ADD_ROAD) {
+        float minDist = std::numeric_limits<float>::max();
+        glm::vec3 bestNode = intersect;
+
+        // Search the graph for close nodes
+        for (const auto& kv : lane0_graph) {
+            float d = glm::distance(kv.first, intersect);
+            if (d < snapThreshold && d < minDist) {
+                minDist = d;
+                bestNode = kv.first;
+                snapped = true;
+            }
+        }
+
+        if (snapped) {
+            intersect = bestNode;
+            // Visual debug: Change cursor color or print
+            // std::cout << "Snapped to existing node!" << std::endl; 
+        }
+    }
+
+    // 2. Fallback: Snap to Grid (Lower Priority)
+    if (!snapped && editorState.snapToGrid) {
         float g = editorState.gridSize;
         intersect.x = round(intersect.x / g) * g;
         intersect.z = round(intersect.z / g) * g;
-        intersect.y = 0.05f; // Slight offset to prevent z-fighting with ground
     }
+
+    // Lift slightly to avoid z-fighting
+    intersect.y = 0.05f;
 
     currentMouseGroundPos = intersect; // Update global for ghost rendering
 

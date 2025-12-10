@@ -8,8 +8,6 @@
 #include "renderData.hpp"
 #include <osmium/osm/types.hpp>
 
-
-
 // In a shared header (e.g., roadStructure.hpp)
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 

@@ -256,7 +256,7 @@ void checkGLError(const std::string& operation) {
 void createTestLaneGraph() {
     std::cout << "Creating test lane graph..." << std::endl;
 
-    // Clear existing graphs
+    // Clear existing bui
     lane0_graph.clear();
     lane1_graph.clear();
 
@@ -671,6 +671,78 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
     ImGui::PopStyleVar();
 }
 
+void renderGraphDebug(const LaneGraph& graph, Shader& shader, const glm::mat4& projection, const glm::mat4& view) {
+    std::vector<glm::vec3> lines;
+    for (const auto& kv : graph) {
+        glm::vec3 start = kv.first;
+        start.y += 0.5f; // Lift up slightly to see over road
+
+        for (const auto& neighbor : kv.second) {
+            glm::vec3 end = neighbor;
+            end.y += 0.5f;
+            lines.push_back(start);
+            lines.push_back(end);
+        }
+    }
+
+    if (lines.empty()) return;
+
+    unsigned int VAO, VBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(glm::vec3), lines.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), 0);
+    glEnableVertexAttribArray(0);
+
+    shader.use();
+    shader.setMat4("projection", projection);
+    shader.setMat4("view", view);
+    shader.setMat4("model", glm::mat4(1.0f));
+    shader.setVec3("lightColor", glm::vec3(0.0f, 1.0f, 0.0f)); // Bright Green Lines
+
+    glDrawArrays(GL_LINES, 0, lines.size());
+
+    glDeleteBuffers(1, &VBO);
+    glDeleteVertexArrays(1, &VAO);
+}
+
+void renderValidNodes(const LaneGraph& graph, Shader& shader, const glm::mat4& projection, const glm::mat4& view) {
+    std::vector<glm::vec3> nodes;
+    for (const auto& kv : graph) {
+        // Lift slightly so they are visible over the road
+        glm::vec3 pos = kv.first;
+        pos.y += 0.5f;
+        nodes.push_back(pos);
+    }
+
+    if (nodes.empty()) return;
+
+    unsigned int VAO, VBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, nodes.size() * sizeof(glm::vec3), nodes.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), 0);
+    glEnableVertexAttribArray(0);
+
+    shader.use();
+    shader.setMat4("projection", projection);
+    shader.setMat4("view", view);
+    shader.setMat4("model", glm::mat4(1.0f));
+
+    // BLUE COLOR for valid connection points
+    shader.setVec3("lightColor", glm::vec3(0.0f, 0.5f, 1.0f));
+
+    glPointSize(8.0f); // Make them visible
+    glDrawArrays(GL_POINTS, 0, nodes.size());
+
+    glDeleteBuffers(1, &VBO);
+    glDeleteVertexArrays(1, &VAO);
+}
+
 int main() {
     // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -794,7 +866,6 @@ int main() {
         {"other",        {0.0f,0.4f,0.0f}}
     };
 
-    // TODO: CHange to your own Path
     Shader roadShader(VERT_SHADER_PATH, FRAG_SHADER_PATH);
     Shader buildingShader(VERT_SHADER_PATH, BUILDING_FRAG_PATH);
     Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
@@ -1039,6 +1110,9 @@ int main() {
             glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
             glm::vec3 viewPos = camera.Position;
 
+            if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS) {
+                renderGraphDebug(lane0_graph, buildingShader, projection, view);
+            }
 
             renderScene(scene, groundShader, roadShader, buildingShader,
                 groundTexture, roadTexture, buildingTexture,
@@ -1096,6 +1170,8 @@ int main() {
                     showSidebar = !showSidebar;
 
                     if (showSidebar) {
+                        renderValidNodes(lane0_graph, buildingShader, projection, view);
+
                         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
                         cursorEnabled = true;
                     }
@@ -1122,12 +1198,13 @@ int main() {
             }
             else if (currentAppState == AppState::SIMULATION) {
                 if (showSidebar) {
+                    renderValidNodes(lane0_graph, buildingShader, projection, view);
                     RenderSidebar(&showSidebar, useLocalSimulation, simulationSpeed, simulationSteps,
                         clientServer, isLoading, deltaTime, dots, window, scene, isPaused, resetSimulation
                     );
 
                     if (!ImGui::GetIO().WantCaptureMouse && cursorEnabled) {
-                        HandleMapInteraction(camera, window);
+                        HandleMapInteraction(camera, window, lane0_graph);
                     }
                 }
             }

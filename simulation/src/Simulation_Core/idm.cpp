@@ -15,6 +15,80 @@ std::vector<Dot> dots;
 // In one .cpp file (e.g., idm.cpp)
 std::vector<std::vector<glm::vec3>> traversalPaths;
 
+using PrioNode = std::pair<float, glm::vec3>;
+
+// Helper for priority queue comparison
+struct ComparePrioNode {
+    bool operator()(const PrioNode& a, const PrioNode& b) {
+        return a.first > b.first; // Min-heap (smallest distance on top)
+    }
+};
+
+std::vector<glm::vec3> FindPathDijkstra(
+    const LaneGraph& lanegraph,
+    const glm::vec3& start,
+    const glm::vec3& goal)
+{
+    // 1. Data Structures
+    // We must use the SAME comparator (Vec3Less) as the main graph to ensure keys match
+    std::map<glm::vec3, glm::vec3, Vec3Less> came_from;
+    std::map<glm::vec3, float, Vec3Less> cost_so_far;
+
+    std::priority_queue<PrioNode, std::vector<PrioNode>, ComparePrioNode> frontier;
+
+    // 2. Initialization
+    frontier.push({ 0.0f, start });
+    came_from[start] = start;
+    cost_so_far[start] = 0.0f;
+
+    glm::vec3 current;
+    bool found = false;
+
+    // 3. Search Loop
+    while (!frontier.empty()) {
+        current = frontier.top().second;
+        frontier.pop();
+
+        if (current == goal) {
+            found = true;
+            break;
+        }
+
+        // Check neighbors
+        // Note: lanegraph is a map, so we use find to handle the Vec3Less comparator correctly
+        auto it = lanegraph.find(current);
+        if (it == lanegraph.end()) continue;
+
+        for (const glm::vec3& next : it->second) {
+            // Calculate physical distance cost
+            float new_cost = cost_so_far[current] + glm::distance(current, next);
+
+            // If we found a cheaper path to 'next', or haven't visited 'next' yet
+            if (cost_so_far.find(next) == cost_so_far.end() || new_cost < cost_so_far[next]) {
+                cost_so_far[next] = new_cost;
+                frontier.push({ new_cost, next });
+                came_from[next] = current;
+            }
+        }
+    }
+
+    // 4. Reconstruct Path
+    std::vector<glm::vec3> path;
+    if (!found) {
+        // Fallback: If disconnected, return empty
+        return path;
+    }
+
+    current = goal;
+    while (current != start) {
+        path.push_back(current);
+        current = came_from[current];
+    }
+    path.push_back(start);
+    std::reverse(path.begin(), path.end());
+
+    return path;
+}
 
 // Helper: Find a path in the lane graph from start to end using BFS (for demo)
 std::vector<glm::vec3> FindPathBFS(
@@ -66,7 +140,7 @@ void InitDotsOnMultiplePaths(const LaneGraph& lanegraph, const std::vector<glm::
     traversalPaths.clear();
 
     for (size_t i = 0; i < origins.size(); ++i) {
-        std::vector<glm::vec3> path = FindPathBFS(lanegraph, origins[i], goal);
+        std::vector<glm::vec3> path = FindPathDijkstra(lanegraph, origins[i], goal);
         if (path.size() < 2) continue;
         traversalPaths.push_back(path);
 
