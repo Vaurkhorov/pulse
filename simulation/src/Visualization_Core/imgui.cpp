@@ -166,59 +166,50 @@ void HandleMapInteraction(Camera& cam, GLFWwindow* window, LaneGraph lane0_graph
     glm::vec3 ray_wor = glm::vec3(glm::inverse(view) * ray_eye);
     ray_wor = glm::normalize(ray_wor);
 
-    // 7. Ray-Plane Intersection (Plane y = 0)
-    // Ray equation: P = CamPos + t * RayDir
-    // We want P.y = 0
-    // 0 = CamPos.y + t * RayDir.y  =>  t = -CamPos.y / RayDir.y
-
-    // Check if looking strictly parallel or up (no intersection with ground)
+    // Ray-Plane Intersection
     if (std::abs(ray_wor.y) < 0.0001f) return;
-
     float t = -cam.Position.y / ray_wor.y;
-
-    // If t < 0, intersection is behind camera
     if (t < 0.0f) return;
 
-    // 8. Snap to Grid Logic
     glm::vec3 intersect = cam.Position + ray_wor * t;
 
-    // --- NEW: INTELLIGENT SNAPPING ---
+    // --- INTELLIGENT SNAPPING ---
     bool snapped = false;
-    float snapThreshold = 5.0f; // 5 meters
+    float snapThreshold = 5.0f;
 
-    // 1. Try Snapping to Existing Graph Nodes (High Priority)
+    // 1. Try Snapping to Graph Nodes
     if (editorState.currentTool == EditorState::ADD_ROAD) {
         float minDist = std::numeric_limits<float>::max();
         glm::vec3 bestNode = intersect;
 
-        // Search the graph for close nodes
         for (const auto& kv : lane0_graph) {
-            float d = glm::distance(kv.first, intersect);
-            if (d < snapThreshold && d < minDist) {
-                minDist = d;
-                bestNode = kv.first;
+            // Ignore Y in distance check for easier snapping from top-down view
+            float distXZ = glm::distance(glm::vec2(kv.first.x, kv.first.z), glm::vec2(intersect.x, intersect.z));
+
+            if (distXZ < snapThreshold && distXZ < minDist) {
+                minDist = distXZ;
+                bestNode = kv.first; // This node has the EXACT Y coord of the graph (usually 0.0)
                 snapped = true;
             }
         }
 
         if (snapped) {
             intersect = bestNode;
-            // Visual debug: Change cursor color or print
-            // std::cout << "Snapped to existing node!" << std::endl; 
         }
     }
 
-    // 2. Fallback: Snap to Grid (Lower Priority)
-    if (!snapped && editorState.snapToGrid) {
-        float g = editorState.gridSize;
-        intersect.x = round(intersect.x / g) * g;
-        intersect.z = round(intersect.z / g) * g;
+    // 2. Fallback: Snap to Grid or Flat Plane
+    if (!snapped) {
+        if (editorState.snapToGrid) {
+            float g = editorState.gridSize;
+            intersect.x = round(intersect.x / g) * g;
+            intersect.z = round(intersect.z / g) * g;
+        }
+        // Only apply standard height to NEW points
+        intersect.y = 0.0f;
     }
 
-    // Lift slightly to avoid z-fighting
-    intersect.y = 0.05f;
-
-    currentMouseGroundPos = intersect; // Update global for ghost rendering
+    currentMouseGroundPos = intersect;
 
     // 9. Handle Click (Add Point)
     // Debounce: ensure we don't add multiple points for one click

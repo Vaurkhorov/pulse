@@ -71,6 +71,7 @@ bool showSidebar = false;
 bool isPaused = false;
 std::vector<glm::vec3> lastOrigins;
 glm::vec3 lastGoal;
+extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -743,6 +744,42 @@ void renderValidNodes(const LaneGraph& graph, Shader& shader, const glm::mat4& p
     glDeleteVertexArrays(1, &VAO);
 }
 
+void renderPathDebug(const std::vector<std::vector<glm::vec3>>& paths, Shader& shader, const glm::mat4& projection, const glm::mat4& view) {
+    if (paths.empty()) return;
+
+    // Use the shader
+    shader.use();
+    shader.setMat4("projection", projection);
+    shader.setMat4("view", view);
+    shader.setMat4("model", glm::mat4(1.0f));
+    shader.setVec3("lightColor", glm::vec3(1.0f, 0.0f, 0.0f)); // RED for active paths
+
+    for (const auto& path : paths) {
+        if (path.size() < 2) continue;
+
+        // Lift path slightly higher than the road and the blue dots
+        std::vector<glm::vec3> renderPath = path;
+        for (auto& p : renderPath) p.y += 1.0f;
+
+        unsigned int VAO, VBO;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, renderPath.size() * sizeof(glm::vec3), renderPath.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), 0);
+        glEnableVertexAttribArray(0);
+
+        glLineWidth(3.0f); // Make lines thick
+        glDrawArrays(GL_LINE_STRIP, 0, renderPath.size());
+        glLineWidth(1.0f); // Reset width
+
+        glDeleteBuffers(1, &VBO);
+        glDeleteVertexArrays(1, &VAO);
+    }
+}
+
 int main() {
     // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -1125,6 +1162,7 @@ int main() {
 
                 // Temporarily disable depth test so editor lines appear ON TOP of everything?
                 // glDisable(GL_DEPTH_TEST); 
+                renderValidNodes(lane0_graph, buildingShader, projection, view);
 
                 renderDynamicEditor(editorState, buildingShader, projection, view);
 
@@ -1170,7 +1208,6 @@ int main() {
                     showSidebar = !showSidebar;
 
                     if (showSidebar) {
-                        renderValidNodes(lane0_graph, buildingShader, projection, view);
 
                         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
                         cursorEnabled = true;
@@ -1199,6 +1236,7 @@ int main() {
             else if (currentAppState == AppState::SIMULATION) {
                 if (showSidebar) {
                     renderValidNodes(lane0_graph, buildingShader, projection, view);
+                    renderPathDebug(traversalPaths, buildingShader, projection, view); // Red Lines
                     RenderSidebar(&showSidebar, useLocalSimulation, simulationSpeed, simulationSteps,
                         clientServer, isLoading, deltaTime, dots, window, scene, isPaused, resetSimulation
                     );
