@@ -8,8 +8,6 @@
 #include "renderData.hpp"
 #include <osmium/osm/types.hpp>
 
-
-
 // In a shared header (e.g., roadStructure.hpp)
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
@@ -81,10 +79,24 @@ struct Key3Eq {
 // defines a strict weak ordering for glm::vec3 objects based on their x, y, and z components, allowing for comparison with a specified tolerance
 struct Vec3Less {
     bool operator()(const glm::vec3& a, const glm::vec3& b) const {
-        const float eps = 0.01f;
-        if (std::abs(a.x - b.x) > eps) return a.x < b.x;
-        if (std::abs(a.y - b.y) > eps) return a.y < b.y;
-        return a.z < b.z;
+        const float EPSILON = 0.001f;
+
+        // If the difference is significant, sort by X
+        if (std::abs(a.x - b.x) > EPSILON) {
+            return a.x < b.x;
+        }
+        // If X is "equal", check Y
+        if (std::abs(a.y - b.y) > EPSILON) {
+            return a.y < b.y;
+        }
+        // If X and Y are "equal", check Z
+        if (std::abs(a.z - b.z) > EPSILON) {
+            return a.z < b.z;
+        }
+
+        // If we get here, all coordinates are within EPSILON.
+        // They are considered "Equal", so we must return false (neither is smaller).
+        return false;
     }
 };
 

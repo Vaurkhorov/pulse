@@ -27,9 +27,9 @@ public:
 
     void setupAllBuffers();
     void clearBuffers();
+    void setupRoadBuffers();
 
 private:
-    void setupRoadBuffers();
     void setupBuildingBuffers();
     void setupGroundBuffer();
 };

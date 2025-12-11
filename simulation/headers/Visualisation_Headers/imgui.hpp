@@ -21,4 +21,5 @@ extern bool cursorEnabled;  // Track if cursor is visible/usable
 extern void ShowEditorWindow(bool* p_open);
 extern void InitializeImGui(GLFWwindow* window);
 extern void ShutdownImGui();
-extern void HandleMapInteraction(Camera& cam, GLFWwindow* window);
+
+extern void HandleMapInteraction(Camera& cam, GLFWwindow* window, LaneGraph lane0_graph);
