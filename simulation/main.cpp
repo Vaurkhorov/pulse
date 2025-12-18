@@ -71,6 +71,8 @@ bool showSidebar = false;
 bool isPaused = false;
 std::vector<glm::vec3> lastOrigins;
 glm::vec3 lastGoal;
+std::vector<TrafficLight> trafficLights;
+std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
@@ -286,6 +288,29 @@ void createTestLaneGraph() {
     std::cout << "Test lane graph created with " << lane0_graph.size() << " nodes" << std::endl;
 }
 
+void InitializeTrafficLights(const LaneGraph& graph) {
+    trafficLights.clear();
+    nodeToLightIndex.clear();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(5.0f, 15.0f); // Random cycle 5-15 seconds
+
+    for (const auto& kv : graph) {
+        // If a node has 3 or more connections, it's likely an intersection
+        if (kv.second.size() > 2) {
+            TrafficLight light;
+            light.position = kv.first;
+            light.isGreen = (rand() % 2 == 0); // Random start state
+            light.timer = 0.0f;
+            light.cycleDuration = dis(gen);
+
+            trafficLights.push_back(light);
+            nodeToLightIndex[kv.first] = trafficLights.size() - 1;
+        }
+    }
+    std::cout << "Generated " << trafficLights.size() << " Traffic Lights." << std::endl;
+}
 
 void debugLaneGraphBuilding() {
     std::cout << "=== BEFORE BuildLaneLevelGraphs ===" << std::endl;
@@ -639,6 +664,7 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                             lane0_graph.clear();
                             lane1_graph.clear();
                             BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+                            InitializeTrafficLights(lane0_graph);
 
                             // --- NEW TEST LOGIC ---
                             if (newRoad.vertices.size() >= 2) {
@@ -795,6 +821,16 @@ void renderPathDebug(const std::vector<std::vector<glm::vec3>>& paths, Shader& s
     }
 
     shader.setBool("useFlatColor", false); // OFF after loop
+}
+
+void UpdateTrafficLights(float deltaTime) {
+    for (auto& light : trafficLights) {
+        light.timer += deltaTime;
+        if (light.timer >= light.cycleDuration) {
+            light.timer = 0.0f;
+            light.isGreen = !light.isGreen; // Toggle
+        }
+    }
 }
 
 int main() {
@@ -1002,6 +1038,7 @@ int main() {
     //LaneGraph lane0_graph, lane1_graph;    
     //BuildLaneLevelGraphs(lane0_graph, lane1_graph);
      BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+     InitializeTrafficLights(lane0_graph);
      debugLaneGraphBuilding();
     // Now you have two separate lane-level graphs
 
@@ -1131,6 +1168,7 @@ int main() {
                     // Run the update loop 'simulationSteps' times
                     for (int i = 0; i < simulationSteps; i++) {
                         UpdateAllDotsIDM(stepTime);
+                        UpdateTrafficLights(stepTime);
                     }
                 }
                 else if (simulationTimer >= 0.1f && clientServer && !isLoading) {
