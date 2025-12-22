@@ -77,7 +77,7 @@ std::vector<TrafficLight> trafficLights;
 std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 static bool showHeatMap = false;
-static bool showTrafficLights = true;
+static bool showTrafficLights = false;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -298,22 +298,42 @@ void InitializeTrafficLights(const LaneGraph& graph) {
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(5.0f, 15.0f); // Random cycle 5-15 seconds
+    // Increase cycle time to 10-25 seconds (More realistic, less chaotic blinking)
+    std::uniform_real_distribution<float> dis(10.0f, 25.0f);
+
+    std::vector<glm::vec3> placedPositions;
+    const float MIN_DIST = 40.0f; // Lights must be 40m apart
 
     for (const auto& kv : graph) {
-        // If a node has 3 or more connections, it's likely an intersection
+        // Degree check: Is this an intersection?
         if (kv.second.size() > 2) {
+            glm::vec3 pos = kv.first;
+
+            // SPATIAL FILTER: Check if we already have a light nearby
+            bool tooClose = false;
+            for (const auto& p : placedPositions) {
+                if (glm::distance(pos, p) < MIN_DIST) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue; // Skip this node to prevent clumping
+
+            // PROBABILITY FILTER: Skip 30% of intersections (give-way only)
+            if ((gen() % 100) < 30) continue;
+
             TrafficLight light;
-            light.position = kv.first;
-            light.isGreen = (rand() % 2 == 0); // Random start state
-            light.timer = 0.0f;
+            light.position = pos;
+            light.isGreen = (gen() % 2 == 0);
+            light.timer = 0.0f; // Start fresh
             light.cycleDuration = dis(gen);
 
             trafficLights.push_back(light);
-            nodeToLightIndex[kv.first] = trafficLights.size() - 1;
+            nodeToLightIndex[pos] = trafficLights.size() - 1;
+            placedPositions.push_back(pos);
         }
     }
-    std::cout << "Generated " << trafficLights.size() << " Traffic Lights." << std::endl;
+    std::cout << "Generated " << trafficLights.size() << " Smart Traffic Lights." << std::endl;
 }
 
 void debugLaneGraphBuilding() {
@@ -951,7 +971,7 @@ void RenderHeatMap(const LaneGraph& graph, const std::vector<Dot>& dots, Shader&
     // IMPORTANT: Tell shader to use the vertex colors we just uploaded
     debugShader.setBool("useUniformColor", false);
 
-    glLineWidth(3.0f); // Make lines thicker
+    glLineWidth(5.0f); // Make lines thicker
     glDrawArrays(GL_LINES, 0, vertices.size() / 6); // 6 floats per vertex
     glLineWidth(1.0f);
 
@@ -1191,7 +1211,11 @@ int main() {
     glBindVertexArray(0);
 
 
-    //glEnable(GL_DEPTH_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_PROGRAM_POINT_SIZE); // Essential for resizing the light dots
+    glEnable(GL_BLEND);              // Essential for transparency/glow
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glDepthFunc(GL_LESS);
     glEnable(GL_POLYGON_OFFSET_FILL);
 
