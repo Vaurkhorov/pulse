@@ -1,4 +1,7 @@
-#pragma once
+#pragma once  
+#ifndef ImGuiTableFlags_WidthFixed  
+#define ImGuiTableFlags_WidthFixed (1 << 1)
+#endif
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"

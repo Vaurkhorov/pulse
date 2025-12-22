@@ -123,6 +123,10 @@ struct Dot {
     bool active;
 	size_t pathIndex;
 	glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+    float totalTimeAlive = 0.0f;  // How long has this car been driving?
+    float currentWaitTime = 0.0f; // Time spent stopped (v < 0.1) this trip
+    float distanceTraveled = 0.0f;
 };
 
 extern std::vector<Dot> dots;
@@ -159,3 +163,33 @@ extern std::map<std::string, std::vector<glm::vec3>> laneLineVerticesByType;
 
 extern std::vector<TrafficLight> trafficLights;
 extern std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;
+
+// simulation stats
+struct SimulationStats {
+    int totalTripsFinished = 0;
+    float totalTravelTime = 0.0f;
+    float totalWaitTime = 0.0f;
+
+    // New Real-time metrics
+    int activeCars = 0;
+    int stoppedCars = 0;
+    float avgNetworkSpeed = 0.0f;
+
+    void reset() {
+        totalTripsFinished = 0;
+        totalTravelTime = 0.0f;
+        totalWaitTime = 0.0f;
+        activeCars = 0;
+        stoppedCars = 0;
+        avgNetworkSpeed = 0.0f;
+    }
+
+    float getAvgTravelTime() const {
+        return totalTripsFinished > 0 ? totalTravelTime / totalTripsFinished : 0.0f;
+    }
+    float getAvgDelay() const {
+        return totalTripsFinished > 0 ? totalWaitTime / totalTripsFinished : 0.0f;
+    }
+};
+
+extern SimulationStats currentStats;

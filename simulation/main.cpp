@@ -50,6 +50,9 @@
 #include <numeric>
 #include <functional>
 
+#include <fstream>
+#include <ctime>
+
 // --- CONFIGURATION ---
 static constexpr const unsigned int SCR_WIDTH = 1280;
 static constexpr const unsigned int SCR_HEIGHT = 720;
@@ -78,6 +81,10 @@ std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 static bool showHeatMap = false;
 static bool showTrafficLights = false;
+bool showReport = false;
+SimulationStats currentStats;
+SimulationStats baselineStats;
+bool hasBaseline = false;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -731,6 +738,8 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                 ImGui::Spacing();
                 ImGui::TextWrapped("Heatmap: Green = Free, Yellow = Busy, Red = Jam.");
 
+                ImGui::Checkbox("Show Urban Planning Report", &showReport);
+
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
@@ -1026,6 +1035,168 @@ void RenderTrafficLights(Shader& debugShader, const glm::mat4& proj, const glm::
     drawBatch(greenLights, glm::vec3(0.0f, 1.0f, 0.0f)); // Bright Green
     drawBatch(redLights, glm::vec3(1.0f, 0.0f, 0.0f)); // Bright Red
 }
+
+void SaveReportToFile() {
+    std::ofstream file("Urban_Planning_Report.txt");
+
+    // Get timestamp
+    time_t now = time(0);
+    char* dt = ctime(&now);
+
+    file << "=================================================\n";
+    file << "       PULSE ENGINE: TRAFFIC IMPACT ANALYSIS     \n";
+    file << "=================================================\n";
+    file << "Date: " << dt << "\n";
+
+    file << "-------------------------------------------------\n";
+    file << "1. BASELINE (BEFORE CHANGES)\n";
+    file << "-------------------------------------------------\n";
+    if (hasBaseline) {
+        file << "Avg Travel Time: " << baselineStats.getAvgTravelTime() << " sec\n";
+        file << "Avg Delay:       " << baselineStats.getAvgDelay() << " sec\n";
+        file << "Throughput:      " << baselineStats.totalTripsFinished << " vehicles\n";
+        file << "Network Speed:   " << baselineStats.avgNetworkSpeed << " km/h\n";
+    }
+    else {
+        file << "[DATA MISSING] No baseline was captured.\n";
+    }
+
+    file << "\n-------------------------------------------------\n";
+    file << "2. INTERVENTION (CURRENT SIMULATION)\n";
+    file << "-------------------------------------------------\n";
+    file << "Avg Travel Time: " << currentStats.getAvgTravelTime() << " sec\n";
+    file << "Avg Delay:       " << currentStats.getAvgDelay() << " sec\n";
+    file << "Throughput:      " << currentStats.totalTripsFinished << " vehicles\n";
+    file << "Network Speed:   " << currentStats.avgNetworkSpeed << " km/h\n";
+
+    file << "\n-------------------------------------------------\n";
+    file << "3. IMPACT ASSESSMENT\n";
+    file << "-------------------------------------------------\n";
+    if (hasBaseline) {
+        float timeDiff = currentStats.getAvgTravelTime() - baselineStats.getAvgTravelTime();
+        float speedDiff = currentStats.avgNetworkSpeed - baselineStats.avgNetworkSpeed;
+
+        file << "Travel Time Change: " << (timeDiff > 0 ? "+" : "") << timeDiff << " sec "
+            << (timeDiff < 0 ? "(IMPROVED)" : "(WORSENED)") << "\n";
+
+        file << "Network Speed Change: " << (speedDiff > 0 ? "+" : "") << speedDiff << " km/h "
+            << (speedDiff > 0 ? "(IMPROVED)" : "(WORSENED)") << "\n";
+    }
+    else {
+        file << "Cannot calculate impact without baseline.\n";
+    }
+
+    file.close();
+    std::cout << ">> Report exported to 'Urban_Planning_Report.txt'" << std::endl;
+}
+
+void RenderUrbanReport(bool* p_open) {
+    ImGui::SetNextWindowSize(ImVec2(450, 500), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Urban Planning Impact Report", p_open)) {
+        ImGui::End();
+        return;
+    }
+
+    // Header
+    ImGui::TextColored(ImVec4(0.0f, 1.0f, 1.0f, 1.0f), "TRAFFIC NETWORK ANALYSIS");
+    ImGui::Separator();
+
+    // 1. Snapshot Data
+    if (ImGui::Button("CAPTURE BASELINE (Before Changes)", ImVec2(-1, 35))) {
+        baselineStats = currentStats;
+        hasBaseline = true;
+    }
+
+    if (hasBaseline) {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Baseline Captured. Comparing Live Data...");
+    }
+    else {
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "No Baseline. Capture one before editing roads.");
+    }
+    ImGui::Spacing();
+
+    // 2. Metrics Table
+    if (ImGui::BeginTable("StatsTable", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("Metric", ImGuiTableColumnFlags_WidthFixed, 160.0f);
+        ImGui::TableSetupColumn("Live Value");
+        ImGui::TableSetupColumn("Impact", ImGuiTableFlags_WidthFixed, 100.0f);
+        ImGui::TableHeadersRow();
+
+        auto Row = [&](const char* label, float current, float baseline, const char* fmt, bool lowerIsBetter) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::Text(label);
+            ImGui::TableNextColumn(); ImGui::Text(fmt, current);
+            ImGui::TableNextColumn();
+
+            if (hasBaseline) {
+                float diff = current - baseline;
+                if (abs(diff) < 0.01f) {
+                    ImGui::Text("-");
+                }
+                else {
+                    bool good = lowerIsBetter ? (diff < 0) : (diff > 0);
+                    ImVec4 color = good ? ImVec4(0, 1, 0, 1) : ImVec4(1, 0, 0, 1);
+                    ImGui::TextColored(color, "%+.1f", diff);
+                }
+            }
+            else {
+                ImGui::Text("-");
+            }
+            };
+
+        Row("Avg Travel Time (s)", currentStats.getAvgTravelTime(), baselineStats.getAvgTravelTime(), "%.1f", true);
+        Row("Avg Delay (s)", currentStats.getAvgDelay(), baselineStats.getAvgDelay(), "%.1f", true);
+        Row("Throughput (Cars)", (float)currentStats.totalTripsFinished, (float)baselineStats.totalTripsFinished, "%.0f", false);
+        Row("Network Speed (km/h)", currentStats.avgNetworkSpeed, baselineStats.avgNetworkSpeed, "%.1f", false);
+        Row("Stopped Vehicles", (float)currentStats.stoppedCars, (float)baselineStats.stoppedCars, "%.0f", true);
+
+        ImGui::EndTable();
+    }
+
+    // 3. Level of Service (LOS) Badge
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    float delay = currentStats.getAvgDelay();
+    char los = 'A';
+    ImVec4 color = ImVec4(0, 1, 0, 1);
+
+    if (delay > 80) { los = 'F'; color = ImVec4(1, 0, 0, 1); }
+    else if (delay > 55) { los = 'E'; color = ImVec4(1, 0.4f, 0, 1); }
+    else if (delay > 35) { los = 'D'; color = ImVec4(1, 0.8f, 0, 1); }
+    else if (delay > 20) { los = 'C'; color = ImVec4(1, 1, 0, 1); }
+    else if (delay > 10) { los = 'B'; color = ImVec4(0.7f, 1, 0, 1); }
+
+    ImGui::Text("Network Level of Service (LOS):");
+    ImGui::SameLine();
+
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+    ImGui::SetWindowFontScale(2.0f);
+    ImGui::TextColored(color, "%c", los);
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::PopFont();
+
+    if (hasBaseline) {
+        float baseDelay = baselineStats.getAvgDelay();
+        char baseLos = 'A';
+        if (baseDelay > 80) baseLos = 'F';
+        else if (baseDelay > 55) baseLos = 'E';
+        else if (baseDelay > 35) baseLos = 'D';
+        else if (baseDelay > 20) baseLos = 'C';
+        else if (baseDelay > 10) baseLos = 'B';
+
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Was %c)", baseLos);
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("EXPORT REPORT (.TXT)", ImVec2(-1, 40))) {
+        SaveReportToFile();
+    }
+
+    ImGui::End();
+}
+
 
 int main() {
     // For debuging memory leaks
@@ -1501,9 +1672,32 @@ int main() {
                 if (showSidebar) {
                     renderValidNodes(lane0_graph, buildingShader, projection, view);
                     renderPathDebug(traversalPaths, buildingShader, projection, view); // Red Lines
+
                     RenderSidebar(&showSidebar, useLocalSimulation, simulationSpeed, simulationSteps,
                         clientServer, isLoading, deltaTime, dots, window, scene, isPaused, resetSimulation
                     );
+
+                    currentStats.activeCars = 0;
+                    currentStats.stoppedCars = 0;
+                    float totalSpeed = 0.0f;
+
+                    for (const auto& d : dots) {
+                        if (d.active) {
+                            currentStats.activeCars++;
+                            totalSpeed += d.v;
+                            if (d.v < 1.0f) currentStats.stoppedCars++;
+                        }
+                    }
+                    if (currentStats.activeCars > 0) {
+                        currentStats.avgNetworkSpeed = (totalSpeed / currentStats.activeCars) * 3.6f; // Convert m/s to km/h
+                    }
+                    else {
+                        currentStats.avgNetworkSpeed = 0.0f;
+                    }
+
+                    if (showReport) {
+                        RenderUrbanReport(&showReport);
+                    }
 
                     if (!ImGui::GetIO().WantCaptureMouse && cursorEnabled) {
                         HandleMapInteraction(camera, window, lane0_graph);
