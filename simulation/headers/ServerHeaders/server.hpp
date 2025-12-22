@@ -50,6 +50,7 @@ namespace serialization {
     struct SimulationRequest {
         std::vector<LaneCell> laneCells;
         std::vector<Vehicle> vehicles;
+            ;
         float deltaTime;
         int numSteps;
 

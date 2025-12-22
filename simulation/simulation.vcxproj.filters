@@ -101,9 +101,6 @@
     <ClInclude Include="headers\Visualisation_Headers\roadStructure.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="headers\ServerHeaders\server.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="headers\Visualisation_Headers\shaders.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>

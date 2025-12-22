@@ -1,0 +1,26 @@
+=================================================
+       PULSE ENGINE: TRAFFIC IMPACT ANALYSIS     
+=================================================
+Date: Mon Dec 22 23:04:20 2025
+
+-------------------------------------------------
+1. BASELINE (BEFORE CHANGES)
+-------------------------------------------------
+Avg Travel Time: 0 sec
+Avg Delay:       0 sec
+Throughput:      0 vehicles
+Network Speed:   5.21458 km/h
+
+-------------------------------------------------
+2. INTERVENTION (CURRENT SIMULATION)
+-------------------------------------------------
+Avg Travel Time: 0 sec
+Avg Delay:       0 sec
+Throughput:      0 vehicles
+Network Speed:   5.08147 km/h
+
+-------------------------------------------------
+3. IMPACT ASSESSMENT
+-------------------------------------------------
+Travel Time Change: 0 sec (WORSENED)
+Network Speed Change: -0.133113 km/h (WORSENED)

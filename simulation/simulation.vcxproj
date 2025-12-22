@@ -163,7 +163,6 @@
     <ClInclude Include="headers\Visualisation_Headers\osm.hpp" />
     <ClInclude Include="headers\Visualisation_Headers\renderData.hpp" />
     <ClInclude Include="headers\Visualisation_Headers\roadStructure.hpp" />
-    <ClInclude Include="headers\ServerHeaders\server.hpp" />
     <ClInclude Include="headers\Visualisation_Headers\shaders.hpp" />
     <ClInclude Include="headers\stb_image.h" />
     <ClInclude Include="headers\Visualisation_Headers\Texture.hpp" />
