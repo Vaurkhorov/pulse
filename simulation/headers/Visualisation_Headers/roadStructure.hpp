@@ -8,6 +8,8 @@
 #include "renderData.hpp"
 #include <osmium/osm/types.hpp>
 
+const float VEHICLE_LENGTH = 4.5f;
+
 // In a shared header (e.g., roadStructure.hpp)
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
 
@@ -17,6 +19,13 @@ struct RoadSegment {
 	int laneCount = 1;
 	std::vector<osmium::unsigned_object_id_type> node_refs;  // node IDs
 	int lanes = 2; // default number of lanes  
+};
+
+struct TrafficLight {
+    glm::vec3 position;
+    bool isGreen;
+    float timer;
+    float cycleDuration;
 };
 
 // GPU‑side structure: one per lane‑cell
@@ -148,4 +157,5 @@ extern std::vector<glm::vec3> groundPlaneVertices;
 // Stroing Lane Line Vertices by the type of road so that I can differentiat between them
 extern std::map<std::string, std::vector<glm::vec3>> laneLineVerticesByType;
 
-
+extern std::vector<TrafficLight> trafficLights;
+extern std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;

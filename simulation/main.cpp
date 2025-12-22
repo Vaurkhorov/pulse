@@ -62,6 +62,8 @@ const char* CAR_VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simu
 const char* CAR_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\instanced.frag";
 const char* FXAA_VERT_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\fxaa.vert";
 const char* FXAA_FRAG_SHADER_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\fxaa.frag";
+const char* DEBUG_VERT_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\debug.vert"; 
+const char* DEBUG_FRAG_PATH = "C:\\Users\\Akhil\\source\\repos\\pulse\\simulation\\assets\\shaders\\debug.frag";
 
 LaneGraph lane0_graph, lane1_graph;
 const std::string SERVER_IP = "192.168.31.195";
@@ -71,7 +73,11 @@ bool showSidebar = false;
 bool isPaused = false;
 std::vector<glm::vec3> lastOrigins;
 glm::vec3 lastGoal;
+std::vector<TrafficLight> trafficLights;
+std::map<glm::vec3, int, Vec3Less> nodeToLightIndex;
 extern std::vector<std::vector<glm::vec3>> traversalPaths;
+static bool showHeatMap = false;
+static bool showTrafficLights = false;
 
 void checkShaderErrors(unsigned int shader, const std::string& type) {
     int success;
@@ -286,6 +292,49 @@ void createTestLaneGraph() {
     std::cout << "Test lane graph created with " << lane0_graph.size() << " nodes" << std::endl;
 }
 
+void InitializeTrafficLights(const LaneGraph& graph) {
+    trafficLights.clear();
+    nodeToLightIndex.clear();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    // Increase cycle time to 10-25 seconds (More realistic, less chaotic blinking)
+    std::uniform_real_distribution<float> dis(10.0f, 25.0f);
+
+    std::vector<glm::vec3> placedPositions;
+    const float MIN_DIST = 40.0f; // Lights must be 40m apart
+
+    for (const auto& kv : graph) {
+        // Degree check: Is this an intersection?
+        if (kv.second.size() > 2) {
+            glm::vec3 pos = kv.first;
+
+            // SPATIAL FILTER: Check if we already have a light nearby
+            bool tooClose = false;
+            for (const auto& p : placedPositions) {
+                if (glm::distance(pos, p) < MIN_DIST) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue; // Skip this node to prevent clumping
+
+            // PROBABILITY FILTER: Skip 30% of intersections (give-way only)
+            if ((gen() % 100) < 30) continue;
+
+            TrafficLight light;
+            light.position = pos;
+            light.isGreen = (gen() % 2 == 0);
+            light.timer = 0.0f; // Start fresh
+            light.cycleDuration = dis(gen);
+
+            trafficLights.push_back(light);
+            nodeToLightIndex[pos] = trafficLights.size() - 1;
+            placedPositions.push_back(pos);
+        }
+    }
+    std::cout << "Generated " << trafficLights.size() << " Smart Traffic Lights." << std::endl;
+}
 
 void debugLaneGraphBuilding() {
     std::cout << "=== BEFORE BuildLaneLevelGraphs ===" << std::endl;
@@ -639,6 +688,7 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                             lane0_graph.clear();
                             lane1_graph.clear();
                             BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+                            InitializeTrafficLights(lane0_graph);
 
                             // --- NEW TEST LOGIC ---
                             if (newRoad.vertices.size() >= 2) {
@@ -663,8 +713,30 @@ void RenderSidebar(bool* p_open, bool& useLocalSim, float& simSpeed, int& simSte
                 }
                 ImGui::EndTabItem();
             }
+
+            if (ImGui::BeginTabItem("Views")) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("VISUALIZATION LAYERS");
+                ImGui::Separator();
+
+                // The checkboxes modify the global variables directly
+                ImGui::Checkbox("Macro View (Heat Map)", &showHeatMap);
+                if (showHeatMap) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "[ON]");
+                }
+
+                ImGui::Checkbox("Micro View (Traffic Lights)", &showTrafficLights);
+
+                ImGui::Spacing();
+                ImGui::TextWrapped("Heatmap: Green = Free, Yellow = Busy, Red = Jam.");
+
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
         }
+
+        
 
         ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 50);
         if (ImGui::Button("<< MAIN MENU", ImVec2(-1, 30))) {
@@ -797,6 +869,164 @@ void renderPathDebug(const std::vector<std::vector<glm::vec3>>& paths, Shader& s
     shader.setBool("useFlatColor", false); // OFF after loop
 }
 
+void UpdateTrafficLights(float deltaTime) {
+    for (auto& light : trafficLights) {
+        light.timer += deltaTime;
+        if (light.timer >= light.cycleDuration) {
+            light.timer = 0.0f;
+            light.isGreen = !light.isGreen; // Toggle
+        }
+    }
+}
+
+// comparatorr for the below functions map
+struct EdgeLess {
+    bool operator()(const std::pair<glm::vec3, glm::vec3>& a, const std::pair<glm::vec3, glm::vec3>& b) const {
+        Vec3Less cmp;
+        // Compare Start Nodes
+        if (cmp(a.first, b.first)) return true;
+        if (cmp(b.first, a.first)) return false;
+
+        // Start Nodes are equal, compare End Nodes
+        return cmp(a.second, b.second);
+    }
+};
+
+void RenderHeatMap(const LaneGraph& graph, const std::vector<Dot>& dots, Shader& debugShader,
+    const glm::mat4& projection, const glm::mat4& view) {
+
+    // 1. Calculate Density Map
+    // Key: Pair of StartNode, EndNode -> Count of cars on that segment
+    std::map<std::pair<glm::vec3, glm::vec3>, int, EdgeLess> edgeCounts;
+
+    for (const auto& dot : dots) {
+        if (!dot.active) continue;
+        if (dot.pathIndex >= traversalPaths.size()) continue;
+
+        const auto& path = traversalPaths[dot.pathIndex];
+        if (dot.segment + 1 >= path.size()) continue;
+
+        // Use the exact points from the path to identify the edge
+        glm::vec3 a = path[dot.segment];
+        glm::vec3 b = path[dot.segment + 1];
+
+        // Increment count for this segment
+        edgeCounts[{a, b}]++;
+    }
+
+    // 2. Build Geometry (Vertices + Colors)
+    std::vector<float> vertices;
+
+    for (const auto& kv : graph) {
+        glm::vec3 start = kv.first;
+        for (const auto& end : kv.second) {
+
+            // Check count
+            int count = edgeCounts[{start, end}];
+
+            // Color Logic
+            glm::vec3 color;
+            if (count == 0)      color = glm::vec3(0.0f, 1.0f, 0.0f); // Green (Free)
+            else if (count < 3)  color = glm::vec3(1.0f, 1.0f, 0.0f); // Yellow (Busy)
+            else                 color = glm::vec3(1.0f, 0.0f, 0.0f); // Red (Jam)
+
+            // Draw slightly above the road
+            float yOffset = 2.0f;
+
+            // Point A (Pos + Color)
+            vertices.push_back(start.x); vertices.push_back(start.y + yOffset); vertices.push_back(start.z);
+            vertices.push_back(color.r); vertices.push_back(color.g); vertices.push_back(color.b);
+
+            // Point B (Pos + Color)
+            vertices.push_back(end.x); vertices.push_back(end.y + yOffset); vertices.push_back(end.z);
+            vertices.push_back(color.r); vertices.push_back(color.g); vertices.push_back(color.b);
+        }
+    }
+
+    if (vertices.empty()) return;
+
+    // 3. Render
+    unsigned int VAO, VBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+    // Attribute 0: Position (3 floats)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Attribute 1: Color (3 floats)
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    // Setup Shader
+    debugShader.use();
+    debugShader.setMat4("projection", projection);
+    debugShader.setMat4("view", view);
+    debugShader.setMat4("model", glm::mat4(1.0f));
+
+    // IMPORTANT: Tell shader to use the vertex colors we just uploaded
+    debugShader.setBool("useUniformColor", false);
+
+    glLineWidth(5.0f); // Make lines thicker
+    glDrawArrays(GL_LINES, 0, vertices.size() / 6); // 6 floats per vertex
+    glLineWidth(1.0f);
+
+    glDeleteBuffers(1, &VBO);
+    glDeleteVertexArrays(1, &VAO);
+}
+
+void RenderTrafficLights(Shader& debugShader, const glm::mat4& proj, const glm::mat4& view) {
+    std::vector<glm::vec3> greenLights;
+    std::vector<glm::vec3> redLights;
+
+    // Sort lights into buckets
+    for (const auto& light : trafficLights) {
+        glm::vec3 pos = light.position;
+        pos.y += 6.0f; // Draw high up so they are visible
+        if (light.isGreen) greenLights.push_back(pos);
+        else redLights.push_back(pos);
+    }
+
+    debugShader.use();
+    debugShader.setMat4("projection", proj);
+    debugShader.setMat4("view", view);
+    debugShader.setMat4("model", glm::mat4(1.0f));
+
+    // Tell shader to ignore attributes and use a flat uniform color
+    debugShader.setBool("useUniformColor", true);
+
+    // Helper lambda to draw a batch of points
+    auto drawBatch = [&](const std::vector<glm::vec3>& points, glm::vec3 color) {
+        if (points.empty()) return;
+
+        unsigned int VAO, VBO;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), 0);
+        glEnableVertexAttribArray(0);
+
+        debugShader.setVec3("uniformColor", color);
+
+        glPointSize(15.0f); // Big visible lights
+        glDrawArrays(GL_POINTS, 0, points.size());
+
+        glDeleteBuffers(1, &VBO);
+        glDeleteVertexArrays(1, &VAO);
+        };
+
+    // Draw Batches
+    drawBatch(greenLights, glm::vec3(0.0f, 1.0f, 0.0f)); // Bright Green
+    drawBatch(redLights, glm::vec3(1.0f, 0.0f, 0.0f)); // Bright Red
+}
+
 int main() {
     // For debuging memory leaks
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -925,6 +1155,7 @@ int main() {
     Shader groundShader(VERT_SHADER_PATH, GROUND_FRAG_PATH);
     Shader carShader(CAR_VERT_SHADER_PATH, CAR_FRAG_SHADER_PATH);
     Shader fxaaShader(FXAA_VERT_SHADER_PATH, FXAA_FRAG_SHADER_PATH);
+    Shader debugShader(DEBUG_VERT_PATH, DEBUG_FRAG_PATH);
 
     fxaaShader.use();
     fxaaShader.setInt("screenTexture", 0);
@@ -980,7 +1211,11 @@ int main() {
     glBindVertexArray(0);
 
 
-    //glEnable(GL_DEPTH_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_PROGRAM_POINT_SIZE); // Essential for resizing the light dots
+    glEnable(GL_BLEND);              // Essential for transparency/glow
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glDepthFunc(GL_LESS);
     glEnable(GL_POLYGON_OFFSET_FILL);
 
@@ -1002,6 +1237,7 @@ int main() {
     //LaneGraph lane0_graph, lane1_graph;    
     //BuildLaneLevelGraphs(lane0_graph, lane1_graph);
      BuildLaneLevelGraphs(scene.roadsByType, lane0_graph, lane1_graph);
+     InitializeTrafficLights(lane0_graph);
      debugLaneGraphBuilding();
     // Now you have two separate lane-level graphs
 
@@ -1128,6 +1364,7 @@ int main() {
                     // Calculate time per step (sub-stepping)
                     float stepTime = totalTimeStep / (float)simulationSteps;
 
+                    UpdateTrafficLights(stepTime);
                     // Run the update loop 'simulationSteps' times
                     for (int i = 0; i < simulationSteps; i++) {
                         UpdateAllDotsIDM(stepTime);
@@ -1190,9 +1427,19 @@ int main() {
             // --- VEHICLE RENDERING WOULD GO HERE ---
             // DrawAllDots(...) will be added here later.
             // 1. Collect model matrices from all active dots
+
             std::vector<glm::mat4> modelMatrices;
             renderCarsWithDebug(dots, carModel, carShader, instanceVBO, projection, view, lightPos);
+            
+            // MACRO VIEW
+            if (showHeatMap) {
+                RenderHeatMap(lane0_graph, dots, debugShader, projection, view);
+            }
 
+            // MICRO VIEW
+            if (showTrafficLights) {
+                RenderTrafficLights(debugShader, projection, view);
+            }
 
             // --- RENDER PASS 2: Draw Framebuffer to Screen with FXAA ---
             glBindFramebuffer(GL_FRAMEBUFFER, 0); // Bind back to default framebuffer
