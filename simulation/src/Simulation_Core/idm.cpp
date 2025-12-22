@@ -19,7 +19,6 @@ std::vector<Dot> dots;
 std::vector<std::vector<glm::vec3>> traversalPaths;
 
 // --- CONSTANTS ---
-const float VEHICLE_LENGTH = 4.5f;    // Length of the car model
 const float MIN_STOP_DISTANCE = 2.0f; // Gap to leave when stopped
 
 // --- HELPER FUNCTIONS ---
